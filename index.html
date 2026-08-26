@@ -433,6 +433,18 @@
         <div id="backup-list" style="margin-bottom:8px"></div>
         <button class="btn btn-sm" id="backup-now-btn">立即备份</button>
       </div>
+      <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:6px">云端备份（数据加密后存到你的 GitHub 仓库，换设备/清理浏览器都不丢）</div>
+        <div id="cloud-status" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
+        <input type="text" id="cloud-token" placeholder="GitHub 令牌（github_pat_...）" style="width:100%;margin-bottom:6px" />
+        <input type="password" id="cloud-pwd" placeholder="备份密码（加密用，请务必牢记）" style="width:100%;margin-bottom:6px" />
+        <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;margin-bottom:8px"><input type="checkbox" id="cloud-remember" checked /> 记住密码（自动备份时使用，密码仅存本机）</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm" id="cloud-backup-btn"><span class="ic" data-i="upload"></span> 备份到云端</button>
+          <button class="btn btn-sm" id="cloud-restore-btn"><span class="ic" data-i="download"></span> 从云端恢复</button>
+        </div>
+        <div id="cloud-detail" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -533,8 +545,8 @@ function showUndo(msg){ var bar=$("undo-bar"); if(!bar){ bar=document.createElem
 function hideUndo(){ var bar=$("undo-bar"); if(bar) bar.style.display="none"; undoFn=null; if(undoTimer){ clearTimeout(undoTimer); undoTimer=null; } }
 
 /* ============ 版本更新提示 ============ */
-var APP_VERSION="2026.08.26.1";
-var UPDATE_NOTE="打卡页升级：①习惯可指定每月打卡的日期（如吃药每月 8 天）；②习惯顺序可拖拽调整；③点习惯后的「月」按钮可查看该习惯当月打卡情况。";
+var APP_VERSION="2026.08.26.2";
+var UPDATE_NOTE="新增「云端备份」：数据用密码加密后自动存到你的 GitHub 仓库，换设备、清理浏览器、服务器失效都不丢数据。打开 数据管理 即可配置（令牌+密码），支持一键备份/恢复；开启「记住密码」后每天自动静默备份一次。";
 function checkUpdate(){ try{ var seen=storeGet("todo.app.seenVer",""); if(seen===APP_VERSION) return; var bar=$("upd-bar"); if(bar){ bar.innerHTML='🎉 已更新到 v'+APP_VERSION+' · '+UPDATE_NOTE+' <button class="upd-close" id="upd-close">知道了</button>'; bar.style.display="flex"; var c=$("upd-close"); if(c) c.onclick=function(){ bar.style.display="none"; }; } storeSet("todo.app.seenVer",APP_VERSION); }catch(e){} }
 function showDigest(){
   try{
@@ -996,6 +1008,27 @@ function exportICS(){
   }catch(e){ toast("导出日历失败"); }
 }
 
+/* ============ 云端备份（加密存 GitHub） ============ */
+var CLOUD_REPO="migtian/migtian.github.io", CLOUD_PATH="backup/todo-backup.enc";
+function cloudCfg(){ var c=storeGet("todo.app.cloud",null); return (c&&c.token)?c:{token:"",pwd:"",rememberPwd:true}; }
+function cloudSaveCfg(c){ storeSet("todo.app.cloud",c); }
+function cloudKeys(){ var ks=[]; for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k&&k.indexOf("todo.app")===0&&k!=="todo.app.cloud"&&k!=="todo.app.lastDigest") ks.push(k); } return ks; }
+function cloudCollect(){ var out={}; cloudKeys().forEach(function(k){ out[k]=storeGet(k,null); }); return out; }
+function b64e(buf){ var b=new Uint8Array(buf),s=""; for(var i=0;i<b.length;i+=0x8000) s+=String.fromCharCode.apply(null,b.subarray(i,i+0x8000)); return btoa(s); }
+function b64d(str){ var bin=atob(str),b=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) b[i]=bin.charCodeAt(i); return b; }
+function deriveKey(pwd,salt){ var enc=new TextEncoder(); return crypto.subtle.importKey("raw",enc.encode(pwd),"PBKDF2",false,["deriveKey"]).then(function(k){ return crypto.subtle.deriveKey({name:"PBKDF2",salt:salt,iterations:150000,hash:"SHA-256"},k,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]); }); }
+async function cloudEncrypt(pwd,plain){ var salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)); var key=await deriveKey(pwd,salt); var ct=await crypto.subtle.encrypt({name:"AES-GCM",iv:iv},key,new TextEncoder().encode(plain)); return JSON.stringify({v:1,s:b64e(salt),i:b64e(iv),d:b64e(ct)}); }
+async function cloudDecrypt(pwd,packed){ var p=JSON.parse(packed); var key=await deriveKey(pwd,b64d(p.s)); var pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:b64d(p.i)},key,b64d(p.d)); return new TextDecoder().decode(pt); }
+function ghApi(url,method,token,body){ return fetch(url,{method:method,headers:{Authorization:"Bearer "+token,"Accept":"application/vnd.github+json","Content-Type":"application/json","X-GitHub-Api-Version":"2022-11-28"},body:body?JSON.stringify(body):undefined}).then(function(r){ return r.json().catch(function(){return null;}).then(function(j){ return {status:r.status,json:j}; }); }); }
+function cloudErr(r){ return (r.json&&r.json.message)||("HTTP "+r.status); }
+async function cloudBackupNow(token,pwd,quiet){ var packed=await cloudEncrypt(pwd,JSON.stringify({ts:Date.now(),data:cloudCollect()})); var url="https://api.github.com/repos/"+CLOUD_REPO+"/contents/"+CLOUD_PATH; var ex=await ghApi(url,"GET",token); var body={message:"云备份 "+new Date().toISOString().slice(0,10),content:btoa(packed),branch:"main"}; if(ex.status===200&&ex.json.sha) body.sha=ex.json.sha; var r=await ghApi(url,"PUT",token,body); if(r.status===200||r.status===201){ storeSet("todo.app.cloudLast",{ts:Date.now()}); cloudRenderStatus(); if(!quiet) toast("已备份到云端"); return {ok:true}; } if(!quiet) toast("备份失败："+cloudErr(r)); return {ok:false,err:cloudErr(r)}; }
+async function cloudRestoreNow(token,pwd){ var url="https://api.github.com/repos/"+CLOUD_REPO+"/contents/"+CLOUD_PATH; var r=await ghApi(url,"GET",token); if(r.status===404){ toast("云端还没有备份"); return; } if(r.status!==200){ toast("获取失败："+cloudErr(r)); return; } var packed=atob(String(r.json.content).replace(/\s+/g,"")); var plain; try{ plain=await cloudDecrypt(pwd,packed); }catch(e){ toast("密码错误或数据损坏"); return; } var obj; try{ obj=JSON.parse(plain); }catch(e){ toast("备份数据格式错误"); return; } confirmDialog("从云端恢复","将用云端备份（"+new Date(obj.ts).toLocaleString()+"，含 "+Object.keys(obj.data||{}).length+" 类数据）覆盖当前全部数据，确定？",function(){ var data=obj.data||{}; for(var k in data){ if(k.indexOf("todo.app")===0&&k!=="todo.app.cloud"&&k!=="todo.app.lastDigest") storeSet(k,data[k]); } toast("已恢复，重新加载"); setTimeout(function(){ location.reload(); },400); }); }
+function cloudRenderStatus(){ var c=cloudCfg(),last=storeGet("todo.app.cloudLast",null),el=$("cloud-status"); if(!el) return; if(c.token){ el.textContent="✓ 已配置（"+c.token.slice(0,8)+"…"+(c.rememberPwd&&c.pwd?"，已记住密码":"，未记住密码")+"）"+(last?" · 上次备份 "+fmtAgo(last.ts):" · 还没备份过"); } else { el.textContent="未配置：粘贴令牌并设置密码后即可一键备份/恢复"; } var d=$("cloud-detail"); if(d) d.textContent="令牌仅授权这一个仓库的文件读写；数据用密码加密，密码不对任何人都读不了内容。"; }
+function fmtAgo(ts){ var s=Math.max(1,Math.round((Date.now()-ts)/60000)); if(s<60) return s+" 分钟前"; var h=Math.round(s/60); if(h<24) return h+" 小时前"; return Math.round(h/24)+" 天前"; }
+function saveCloudForm(){ var c={token:$("cloud-token").value.trim(),pwd:$("cloud-pwd").value,rememberPwd:$("cloud-remember").checked}; if(!c.rememberPwd) c.pwd=""; cloudSaveCfg(c); }
+function loadCloudForm(){ var c=cloudCfg(); $("cloud-token").value=c.token; $("cloud-pwd").value=(c.rememberPwd&&c.pwd)?c.pwd:""; $("cloud-remember").checked=c.rememberPwd!==false; }
+function cloudTryAuto(){ var c=cloudCfg(); if(!c.token||!c.rememberPwd||!c.pwd) return; var last=storeGet("todo.app.cloudLast",null); if(last&&Date.now()-last.ts<24*3600*1000) return; cloudBackupNow(c.token,c.pwd,true).catch(function(){}); }
+
 /* ============ 自动备份（每月一次） ============ */
 function autoBackup(){
   try{
@@ -1148,20 +1181,23 @@ function bind(){
   bindCatManager("info");
 
   // 数据管理
-  $("dm-toggle").onclick=function(){ $("data-mgmt-wrap").classList.toggle("show"); if($("data-mgmt-wrap").classList.contains("show")) renderBackups(); };
+  $("dm-toggle").onclick=function(){ $("data-mgmt-wrap").classList.toggle("show"); if($("data-mgmt-wrap").classList.contains("show")){ renderBackups(); loadCloudForm(); cloudRenderStatus(); } };
   $("export-btn").onclick=exportData;
   $("export-ics-btn").onclick=exportICS;
   $("import-btn").onclick=function(){ $("import-file").click(); };
   $("import-file").addEventListener("change",function(e){ if(e.target.files&&e.target.files[0]) importData(e.target.files[0]); });
   $("backup-now-btn").onclick=function(){ autoBackup(); renderBackups(); };
   $("backup-list").addEventListener("click",function(e){ var dl=e.target.closest("[data-dl]"); if(dl){ downloadBackup(dl.getAttribute("data-dl")); return; } var b=e.target.closest("[data-bk]"); if(b) restoreBackup(b.getAttribute("data-bk")); });
+  // 云端备份
+  $("cloud-backup-btn").onclick=function(){ var t=$("cloud-token").value.trim(),p=$("cloud-pwd").value; if(!t){ toast("请先粘贴 GitHub 令牌"); return; } if(!p){ toast("请设置备份密码"); return; } saveCloudForm(); var btn=$("cloud-backup-btn"); btn.disabled=true; btn.textContent="备份中…"; cloudBackupNow(t,p,false).then(function(){ btn.disabled=false; btn.textContent="备份到云端"; }).catch(function(){ btn.disabled=false; btn.textContent="备份到云端"; toast("备份失败，请检查网络"); }); };
+  $("cloud-restore-btn").onclick=function(){ var t=$("cloud-token").value.trim(),p=$("cloud-pwd").value; if(!t){ toast("请先粘贴 GitHub 令牌"); return; } if(!p){ toast("请输入备份密码"); return; } saveCloudForm(); var btn=$("cloud-restore-btn"); btn.disabled=true; btn.textContent="恢复中…"; cloudRestoreNow(t,p).then(function(){ btn.disabled=false; btn.textContent="从云端恢复"; }).catch(function(){ btn.disabled=false; btn.textContent="从云端恢复"; toast("恢复失败，请检查网络"); }); };
 
   // 主题
   $("theme-toggle").onclick=function(){ curTheme=curTheme==="dark"?"light":"dark"; storeSet(K_THEME,curTheme); applyTheme(curTheme); };
 }
 
 /* ============ 启动 ============ */
-try{ bind(); fillIcons(document); ensureHabitColors(); autoBackup(); renderBackups(); renderTodoCats(); renderTodos(); checkUpdate(); if(storeGet("todo.app.lastDigest","")!==todayKey()){ storeSet("todo.app.lastDigest",todayKey()); showDigest(); } if($("app-ver")) $("app-ver").textContent="v"+APP_VERSION+" · 数据存于本机，清理浏览器会丢失，建议常备份"; }catch(e){ showErr("初始化失败："+e.message); }
+try{ bind(); fillIcons(document); ensureHabitColors(); autoBackup(); renderBackups(); renderTodoCats(); renderTodos(); checkUpdate(); cloudRenderStatus(); cloudTryAuto(); if(storeGet("todo.app.lastDigest","")!==todayKey()){ storeSet("todo.app.lastDigest",todayKey()); showDigest(); } if($("app-ver")) $("app-ver").textContent="v"+APP_VERSION+" · 数据存于本机，清理浏览器会丢失，建议常备份"; }catch(e){ showErr("初始化失败："+e.message); }
 </script>
 </body>
 </html>
