@@ -572,8 +572,8 @@ function showUndo(msg){ var bar=$("undo-bar"); if(!bar){ bar=document.createElem
 function hideUndo(){ var bar=$("undo-bar"); if(bar) bar.style.display="none"; undoFn=null; if(undoTimer){ clearTimeout(undoTimer); undoTimer=null; } }
 
 /* ============ 版本更新提示 ============ */
-var APP_VERSION="2026.08.26.6";
-var UPDATE_NOTE="月历颜色升级：中国节日（红）/ 国际节日（橙）/ 阿联酋假日（绿）/ 调休（紫）/ 补班（蓝）分色显示；阿联酋先知诞辰修正为官方公共假日 8 月 28 日（宗教日为 8/25）。";
+var APP_VERSION="2026.08.26.7";
+var UPDATE_NOTE="编辑/添加弹窗升级：待办、打卡习惯、保质期、信息记录的添加与编辑表单改为屏幕居中弹窗，不用再滚到底部找表单；月历保持中国节日（红）/国际节日（橙）/阿联酋（绿）/调休（紫）/补班（蓝）分色，先知诞辰按官方公共假日 8/28 标注。";
 function checkUpdate(){ try{ var seen=storeGet("todo.app.seenVer",""); if(seen===APP_VERSION) return; var bar=$("upd-bar"); if(bar){ bar.innerHTML='🎉 已更新到 v'+APP_VERSION+' · '+UPDATE_NOTE+' <button class="upd-close" id="upd-close">知道了</button>'; bar.style.display="flex"; var c=$("upd-close"); if(c) c.onclick=function(){ bar.style.display="none"; }; } storeSet("todo.app.seenVer",APP_VERSION); }catch(e){} }
 function showDigest(){
   try{
