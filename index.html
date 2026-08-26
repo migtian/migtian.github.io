@@ -208,6 +208,25 @@
   .ck-leg-row { display:flex; align-items:center; gap:8px; font-size:12px; }
   .ck-leg-row .name { font-weight:600; flex:1; min-width:0; }
   .ck-leg-row .rng { color:var(--muted); }
+  /* 习惯指定日期 */
+  .ck-mode-opt { display:inline-flex; align-items:center; gap:5px; margin-right:14px; font-size:14px; cursor:pointer; }
+  .ck-days-picker { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-top:8px; }
+  .ck-day-cell { aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid var(--border); background:var(--card); font-size:12px; cursor:pointer; color:var(--text); }
+  .ck-day-cell.sel { background:var(--primary); color:#fff; border-color:var(--primary); font-weight:700; }
+  .ck-habit-row[draggable="true"] { cursor:grab; }
+  .ck-habit-row.dragging { opacity:.6; box-shadow:0 0 0 2px var(--primary); z-index:5; }
+  .ck-drag-hint { font-size:11px; color:var(--muted); margin-top:6px; }
+  /* 单习惯月视图 */
+  .hv-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px; }
+  .hv-head button { border:none; background:var(--primary-soft); color:var(--primary); border-radius:8px; padding:4px 12px; cursor:pointer; font-family:inherit; font-size:14px; }
+  .hv-week { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; font-size:10px; color:var(--muted); text-align:center; margin-bottom:4px; }
+  .hv-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .hv-cell { aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; border-radius:8px; font-size:13px; background:var(--border); color:var(--muted); }
+  .hv-cell.on { background:var(--ok); color:#fff; font-weight:700; }
+  .hv-cell.miss { background:#ffe3e3; color:#e03131; font-weight:700; }
+  body.dark .hv-cell.miss { background:#3a2226; color:#ff8787; }
+  .hv-cell.off { opacity:.3; }
+  .modal-wide { max-width:360px; }
   /* 打卡提醒 */
   .ck-reminder { background:var(--primary-soft); border:1px solid var(--primary); border-radius:14px; padding:12px 14px; margin-bottom:12px; }
   .ck-rem-title { font-weight:700; font-size:15px; color:var(--primary); display:flex; align-items:center; gap:6px; }
@@ -311,6 +330,7 @@
         <div class="field" style="flex:1"><label>开始日期（可选）</label><input type="date" id="ck-start" /></div>
         <div class="field" style="flex:1"><label>结束日期（可选）</label><input type="date" id="ck-end" /></div>
       </div>
+      <div class="field"><label>打卡日</label><div class="cat-head"><label class="ck-mode-opt"><input type="radio" name="ck-daymode" value="" id="ck-mode-daily" checked />每天</label><label class="ck-mode-opt"><input type="radio" name="ck-daymode" value="days" id="ck-mode-days" />指定日期</label></div><div id="ck-days-picker" class="ck-days-picker" style="display:none"></div><div class="ck-sub" id="ck-days-hint" style="margin-top:6px"></div></div>
       <div class="form-actions"><button class="btn btn-primary" id="ck-add-btn">保存</button><button class="btn btn-ghost" id="ck-cancel-btn">取消</button></div>
     </div>
     <button class="btn btn-primary" id="ck-add-toggle" style="width:100%">＋ 添加习惯</button>
@@ -421,6 +441,7 @@
 <div id="toast" class="toast"></div>
 <div class="modal-mask" id="modal-mask"><div class="modal"><h3 id="modal-title"></h3><p id="modal-msg"></p><div class="modal-actions"><button class="btn" id="modal-cancel">取消</button><button class="btn btn-primary" id="modal-ok">确定</button></div></div></div>
 <div class="modal-mask" id="digest-mask"><div class="modal"><h3 id="digest-title">🌅 今日概览</h3><div id="digest-body"></div><div class="modal-actions"><button class="btn btn-primary" id="digest-ok">开始使用</button></div></div></div>
+<div class="modal-mask" id="ckview-mask"><div class="modal modal-wide"><div class="hv-head"><button id="hv-prev">‹</button><div id="hv-title" style="font-weight:700;font-size:15px"></div><button id="hv-next">›</button></div><div class="hv-week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div id="hv-grid" class="hv-grid"></div><div id="hv-stat" class="ck-sub" style="margin:10px 0 12px"></div><div class="modal-actions"><button class="btn btn-primary" id="hv-close" style="width:100%">关闭</button></div></div></div>
 
 <script>
 "use strict";
@@ -489,7 +510,7 @@ var products=storeGet(K_PROD,[]), prodCats=storeGet(K_PRODCAT,[]);
 var habits=storeGet(K_CKH,[]), records=storeGet(K_CKR,{}), ckCats=storeGet(K_CKCAT,[]);
 var infos=storeGet(K_INFO,[]), infoCats=storeGet(K_INFOCAT,[]);
 var editId=null, sortMode="manual", search="", draggingId=null, doneCollapsed=true;
-var ckDate=keyToday(), ckSearch="", ckCatFilter="all", ckEditId=null;
+var ckDate=keyToday(), ckSearch="", ckCatFilter="all", ckEditId=null, ckDragId=null;
 var calView="month", calYear=new Date().getFullYear(), calMonth=new Date().getMonth(), calSel=null, calEdit=false, calEditKey=null;
 var calMonthSearch="", calSummarySearch="", prodSearch="";
 var infoSearch="", infoCatFilter="all", infoEditId=null;
@@ -512,8 +533,8 @@ function showUndo(msg){ var bar=$("undo-bar"); if(!bar){ bar=document.createElem
 function hideUndo(){ var bar=$("undo-bar"); if(bar) bar.style.display="none"; undoFn=null; if(undoTimer){ clearTimeout(undoTimer); undoTimer=null; } }
 
 /* ============ 版本更新提示 ============ */
-var APP_VERSION="2026.08.17.4";
-var UPDATE_NOTE="本次更新：撤销删除已应用到全部页面（待办、打卡习惯、日历条目/每年重复、保质期、信息记录、分类），删除后底部出现「撤销」提示，6 秒内可恢复。";
+var APP_VERSION="2026.08.26.1";
+var UPDATE_NOTE="打卡页升级：①习惯可指定每月打卡的日期（如吃药每月 8 天）；②习惯顺序可拖拽调整；③点习惯后的「月」按钮可查看该习惯当月打卡情况。";
 function checkUpdate(){ try{ var seen=storeGet("todo.app.seenVer",""); if(seen===APP_VERSION) return; var bar=$("upd-bar"); if(bar){ bar.innerHTML='🎉 已更新到 v'+APP_VERSION+' · '+UPDATE_NOTE+' <button class="upd-close" id="upd-close">知道了</button>'; bar.style.display="flex"; var c=$("upd-close"); if(c) c.onclick=function(){ bar.style.display="none"; }; } storeSet("todo.app.seenVer",APP_VERSION); }catch(e){} }
 function showDigest(){
   try{
@@ -673,8 +694,8 @@ function ensureHabitColors(){
   }
   storeSet(K_CKH,habits);
 }
-function ckRangeLabel(h){ var s=typeof h.start==="string"&&h.start?h.start:""; var e=typeof h.end==="string"&&h.end?h.end:""; if(s&&e) return fmtKey(s)+"–"+fmtKey(e); if(s) return "自"+fmtKey(s); if(e) return "至"+fmtKey(e); return ""; }
-function habitActiveOn(h,key){ if(h.start&&key<h.start) return false; if(h.end&&key>h.end) return false; return true; }
+function ckRangeLabel(h){ if(h.days&&h.days.length){ var ds=h.days.slice().sort(function(a,b){return a-b;}); if(ds.length>8) return "每月 "+ds.length+" 天（"+ds.slice(0,3).join("、")+"…号）"; return "每月 "+ds.join("、")+" 号"; } var s=typeof h.start==="string"&&h.start?h.start:""; var e=typeof h.end==="string"&&h.end?h.end:""; if(s&&e) return fmtKey(s)+"–"+fmtKey(e); if(s) return "自"+fmtKey(s); if(e) return "至"+fmtKey(e); return ""; }
+function habitActiveOn(h,key){ if(h.start&&key<h.start) return false; if(h.end&&key>h.end) return false; if(h.days&&h.days.length){ var d=parseKey(key).getDate(); if(h.days.indexOf(d)===-1) return false; } return true; }
 function streakOf(id){ var n=0; var d=new Date(); var tk=calKey(d.getFullYear(),d.getMonth(),d.getDate()); if(!(records[tk]&&records[tk][id])) d.setDate(d.getDate()-1); for(var i=0;i<400;i++){ var k=calKey(d.getFullYear(),d.getMonth(),d.getDate()); if(records[k]&&records[k][id]){ n++; d.setDate(d.getDate()-1); } else break; } return n; }
 function checkedOn(id,key){ return !!(records[key]&&records[key][id]); }
 function toggleCheck(id,key){ if(!records[key]) records[key]={}; if(records[key][id]) delete records[key][id]; else records[key][id]=true; if(Object.keys(records[key]).length===0) delete records[key]; storeSet(K_CKR,records); renderCkList(); renderCkCalendar(); renderCkHabits(); renderCkReminder(); renderCkHeat(); }
@@ -684,7 +705,7 @@ function renderCkCatManage(){ var box=$("ck-cat-list"); if(!box) return; box.inn
 function renderCkList(){
   $("ck-date-label").textContent=fmtKey(ckDate)+" "+["日","一","二","三","四","五","六"][parseKey(ckDate).getDay()];
   var back=$("ck-today-btn"); if(ckDate!==todayKey()) back.style.display=""; else back.style.display="none";
-  var habitsFor=habits.filter(function(h){ if(ckCatFilter!=="all"&&h.cat!==ckCatFilter) return false; if(ckSearch&&h.name.toLowerCase().indexOf(ckSearch.toLowerCase())===-1) return false; return true; });
+  var habitsFor=habits.filter(function(h){ if(!habitActiveOn(h,ckDate)) return false; if(ckCatFilter!=="all"&&h.cat!==ckCatFilter) return false; if(ckSearch&&h.name.toLowerCase().indexOf(ckSearch.toLowerCase())===-1) return false; return true; });
   var done=habitsFor.filter(function(h){return checkedOn(h.id,ckDate);}).length;
   $("ck-today-sub").textContent=habitsFor.length?("今日 "+done+"/"+habitsFor.length+" 已完成"):"今日无打卡项";
   if(!habitsFor.length){ $("ck-list").innerHTML='<div class="empty">'+(habits.length?"该分类下暂无可打卡习惯":"还没有习惯，点下方「添加习惯」")+'</div>'; return; }
@@ -722,8 +743,8 @@ function renderCkHabits(){
   var box=$("ck-habits"); if(!box) return;
   if(!habits.length){ box.innerHTML='<div class="empty">还没有习惯。</div>'; return; }
   box.innerHTML=habits.map(function(h){ var sk=streakOf(h.id); var rng=ckRangeLabel(h); var todayDone=checkedOn(h.id,todayKey());
-    return '<div class="ck-habit-row"><span class="ck-dot" style="background:'+escAttr(h.color)+'"></span><div class="ck-name">'+esc(h.name)+(h.cat?' <span class="ck-sub">'+esc(h.cat)+'</span>':'')+(rng?' <span class="ck-sub">'+esc(rng)+'</span>':'')+' <span class="ck-sub">已连续 '+sk+' 天'+(todayDone?'':' · 今天待打卡')+'</span></div><div class="ck-actions"><button class="mini" data-cedit="'+h.id+'">编辑</button><button class="mini del" data-del="'+h.id+'">删除</button></div></div>';
-  }).join("");
+    return '<div class="ck-habit-row" draggable="true" data-hid="'+escAttr(h.id)+'"><span class="ck-dot" style="background:'+escAttr(h.color)+'"></span><div class="ck-name">'+esc(h.name)+(h.cat?' <span class="ck-sub">'+esc(h.cat)+'</span>':'')+(rng?' <span class="ck-sub">'+esc(rng)+'</span>':'')+' <span class="ck-sub">已连续 '+sk+' 天'+(todayDone?'':' · 今天待打卡')+'</span></div><div class="ck-actions"><button class="mini" data-hview="'+escAttr(h.id)+'" title="本月打卡情况">月</button><button class="mini" data-cedit="'+escAttr(h.id)+'">编辑</button><button class="mini del" data-del="'+escAttr(h.id)+'">删除</button></div></div>';
+  }).join("")+'<div class="ck-drag-hint">按住「月」左侧区域拖拽可调整顺序</div>';
 }
 function renderCkReminder(){
   var box=$("ck-reminder"); if(!box) return;
@@ -761,7 +782,16 @@ function renderCheckin(){
   try{ renderCkReminder(); }catch(e){}
   try{ renderCkHeat(); }catch(e){}
 }
-function openCkForm(o){ ckEditId=o?o.id:null; $("ck-form-title").textContent=o?"编辑习惯":"添加习惯"; $("ck-name").value=o?o.name:""; $("ck-cat").value=o?o.cat:""; $("ck-start").value=o?o.start:""; $("ck-end").value=o?o.end:""; $("ck-form").style.display=""; }
+function openCkForm(o){ ckEditId=o?o.id:null; $("ck-form-title").textContent=o?"编辑习惯":"添加习惯"; $("ck-name").value=o?o.name:""; $("ck-cat").value=o?o.cat:""; $("ck-start").value=o?o.start:""; $("ck-end").value=o?o.end:""; var daysMode=!!(o&&o.days&&o.days.length); $("ck-mode-daily").checked=!daysMode; $("ck-mode-days").checked=daysMode; renderCkDaysPicker(daysMode?o.days:[]); ckDaysToggleMode(); $("ck-form").style.display=""; }
+function ckDaysMode(){ var m=document.querySelector('input[name="ck-daymode"]:checked'); return !!(m&&m.value==="days"); }
+function renderCkDaysPicker(sel){
+  var box=$("ck-days-picker"); if(!box) return;
+  var selMap={}; (sel||[]).forEach(function(d){ selMap[d]=true; });
+  var html=""; for(var i=1;i<=31;i++){ html+='<div class="ck-day-cell'+(selMap[i]?" sel":"")+'" data-d="'+i+'">'+i+'</div>'; }
+  box.innerHTML=html;
+  var hint=$("ck-days-hint"); if(hint) hint.textContent=(sel&&sel.length)?("已选 "+sel.length+" 天："+sel.slice().sort(function(a,b){return a-b;}).join("、")+" 号"):"勾选每个月中需要打卡的日期（可多选）";
+}
+function ckDaysToggleMode(){ var days=ckDaysMode(); var box=$("ck-days-picker"); if(!box) return; box.style.display=days?"":"none"; if(days&&!box.innerHTML) renderCkDaysPicker([]); else if(!days){ var hint=$("ck-days-hint"); if(hint) hint.textContent=""; } }
 function submitHabit(){
   var name=$("ck-name").value.trim(); if(!name){ toast("请输入名称"); return; }
   var cat=$("ck-cat").value.trim();
@@ -770,9 +800,59 @@ function submitHabit(){
   /* Ensure color is unique among existing habits (excluding the one being edited) */
   var used=habits.filter(function(h){return h.id!==ckEditId;}).map(function(h){return h.color;});
   if(used.indexOf(color)!==-1) color=nextHabitColor();
-  if(ckEditId){ for(var i=0;i<habits.length;i++){ if(habits[i].id===ckEditId){ habits[i].name=name; habits[i].cat=cat; habits[i].color=color; habits[i].start=$("ck-start").value||""; habits[i].end=$("ck-end").value||""; } } }
-  else { habits.push({id:uid(),name:name,cat:cat,color:color,createdAt:Date.now(),start:$("ck-start").value||"",end:$("ck-end").value||""}); }
+  var daysArr=[]; if(ckDaysMode()){ var cells=$("ck-days-picker").querySelectorAll(".sel"); for(var ci=0;ci<cells.length;ci++){ daysArr.push(+cells[ci].getAttribute("data-d")); } }
+  var daysVal=daysArr.length?daysArr:undefined;
+  if(ckEditId){ for(var i=0;i<habits.length;i++){ if(habits[i].id===ckEditId){ habits[i].name=name; habits[i].cat=cat; habits[i].color=color; habits[i].start=$("ck-start").value||""; habits[i].end=$("ck-end").value||""; if(daysVal) habits[i].days=daysVal; else delete habits[i].days; } } }
+  else { var nh={id:uid(),name:name,cat:cat,color:color,createdAt:Date.now(),start:$("ck-start").value||"",end:$("ck-end").value||""}; if(daysVal) nh.days=daysVal; habits.push(nh); }
   storeSet(K_CKH,habits); $("ck-form").style.display="none"; renderCheckin();
+}
+/* 单习惯月视图（打卡情况） */
+var hvYear=new Date().getFullYear(), hvMonth=new Date().getMonth(), hvId=null;
+function openHabitView(id){ hvId=id; hvYear=new Date().getFullYear(); hvMonth=new Date().getMonth(); renderHabitView(); $("ckview-mask").classList.add("show"); }
+function renderHabitView(){
+  var h=null; for(var i=0;i<habits.length;i++){ if(habits[i].id===hvId) h=habits[i]; }
+  if(!h){ $("ckview-mask").classList.remove("show"); return; }
+  $("hv-title").textContent=h.name+" · "+hvYear+"年"+(hvMonth+1)+"月";
+  var first=new Date(hvYear,hvMonth,1), startD=first.getDay();
+  var days=new Date(hvYear,hvMonth+1,0).getDate();
+  var html="", cnt=0, due=0;
+  for(var i=0;i<startD;i++){ html+='<div class="hv-cell off"></div>'; }
+  for(var d=1;d<=days;d++){
+    var key=calKey(hvYear,hvMonth,d);
+    if(!habitActiveOn(h,key)){ html+='<div class="hv-cell off">'+d+'</div>'; continue; }
+    due++;
+    if(checkedOn(h.id,key)){ html+='<div class="hv-cell on">✓</div>'; cnt++; }
+    else { html+='<div class="hv-cell miss">✗</div>'; }
+  }
+  $("hv-grid").innerHTML=html;
+  $("hv-stat").textContent="本月应打卡 "+due+" 天 · 已打卡 "+cnt+" 天"+(due-cnt?" · 还差 "+(due-cnt)+" 天":"");
+}
+/* 习惯排序：移动端长按拖拽（独立于待办列表） */
+function initCkTouchDrag(){
+  if(!("ontouchstart" in window)) return;
+  var list=$("ck-habits"); if(!list) return;
+  var tDrag=null;
+  list.addEventListener("touchstart",function(e){
+    if(tDrag&&tDrag.active) return;
+    if(e.target.closest("button")) return;
+    var li=e.target.closest("[data-hid]"); if(!li) return;
+    var id=li.getAttribute("data-hid");
+    tDrag={ id:id, el:li, startX:e.touches[0].clientX, startY:e.touches[0].clientY, timer:null, active:false };
+    tDrag.timer=setTimeout(function(){ if(tDrag){ tDrag.active=true; li.classList.add("dragging"); document.body.style.overflow="hidden"; } },350);
+  },{passive:true});
+  list.addEventListener("touchmove",function(e){
+    if(!tDrag||!tDrag.active){ if(tDrag&&!tDrag.active){ var dx=e.touches[0].clientX-tDrag.startX, dy=e.touches[0].clientY-tDrag.startY; if(Math.abs(dx)>8||Math.abs(dy)>8){ clearTimeout(tDrag.timer); tDrag=null; } } return; }
+    e.preventDefault();
+    var y=e.touches[0].clientY;
+    var items=Array.prototype.slice.call(list.querySelectorAll("[data-hid]"));
+    var after=null;
+    for(var i=0;i<items.length;i++){ var r=items[i].getBoundingClientRect(); if(y<r.top+r.height/2){ after=items[i]; break; } }
+    if(after&&after!==tDrag.el) list.insertBefore(tDrag.el,after);
+    else if(!after) list.appendChild(tDrag.el);
+  },{passive:false});
+  function endDrag(){ if(!tDrag) return; clearTimeout(tDrag.timer); if(tDrag.active){ tDrag.el.classList.remove("dragging"); document.body.style.overflow=""; var ids=Array.prototype.slice.call(list.querySelectorAll("[data-hid]")).map(function(li){return li.getAttribute("data-hid");}); var om={}; ids.forEach(function(id,idx){ om[id]=idx; }); habits.sort(function(a,b){ return (om[a.id]!=null?om[a.id]:999)-(om[b.id]!=null?om[b.id]:999); }); storeSet(K_CKH,habits); renderCkHabits(); } tDrag=null; }
+  list.addEventListener("touchend",endDrag,{passive:true});
+  list.addEventListener("touchcancel",endDrag,{passive:true});
 }
 
 /* ============ 日历 ============ */
@@ -910,7 +990,7 @@ function exportICS(){
     function dt(v){ return String(v||"").replace(/-/g,""); }
     function escICS(s){ return String(s==null?"":s).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n"); }
     todos.forEach(function(t){ if(t.due){ lines.push("BEGIN:VEVENT"); lines.push("UID:todo-"+t.id+"@rili"); lines.push("DTSTAMP:"+dt(todayKey())+"T000000Z"); lines.push("DTSTART;VALUE=DATE:"+dt(t.due)); lines.push("SUMMARY:"+escICS(t.text)); lines.push("END:VEVENT"); } });
-    habits.forEach(function(h){ if(h.start||h.end){ lines.push("BEGIN:VEVENT"); lines.push("UID:habit-"+h.id+"@rili"); lines.push("DTSTAMP:"+dt(todayKey())+"T000000Z"); lines.push("SUMMARY:"+escICS(h.name)); var r="FREQ=DAILY"; if(h.end) r+=";UNTIL="+dt(h.end); lines.push("RRULE:"+r); lines.push("DTSTART;VALUE=DATE:"+(h.start?dt(h.start):dt(todayKey()))); lines.push("END:VEVENT"); } });
+    habits.forEach(function(h){ if(!(h.start||h.end||(h.days&&h.days.length))) return; lines.push("BEGIN:VEVENT"); lines.push("UID:habit-"+h.id+"@rili"); lines.push("DTSTAMP:"+dt(todayKey())+"T000000Z"); lines.push("SUMMARY:"+escICS(h.name)); var r; if(h.days&&h.days.length){ r="FREQ=MONTHLY;BYMONTHDAY="+h.days.slice().sort(function(a,b){return a-b;}).join(","); if(h.end) r+=";UNTIL="+dt(h.end); } else { r="FREQ=DAILY"; if(h.end) r+=";UNTIL="+dt(h.end); } lines.push("RRULE:"+r); lines.push("DTSTART;VALUE=DATE:"+(h.start?dt(h.start):dt(todayKey()))); lines.push("END:VEVENT"); });
     lines.push("END:VCALENDAR");
     var blob=new Blob([lines.join("\r\n")],{type:"text/calendar"}); var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="日程安排-"+todayKey()+".ics"; a.click(); toast("已导出日历(.ics)");
   }catch(e){ toast("导出日历失败"); }
@@ -1012,7 +1092,17 @@ function bind(){
   $("ck-cal-grid").addEventListener("click",function(e){ var c=e.target.closest("[data-ckey]"); if(c){ ckDate=c.getAttribute("data-ckey"); renderCkList(); renderCkCalendar(); } });
   $("ck-heat").addEventListener("click",function(e){ var c=e.target.closest("[data-hk]"); if(c){ ckDate=c.getAttribute("data-hk"); renderCkList(); renderCkCalendar(); var el=$("ck-list"); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); } });
   $("ck-list").addEventListener("click",function(e){ var c=e.target.closest("[data-check]"); if(c){ toggleCheck(c.getAttribute("data-check"),ckDate); } });
-  $("ck-habits").addEventListener("click",function(e){ var ed=e.target.closest("[data-cedit]"); if(ed){ var h=null; for(var i=0;i<habits.length;i++){ if(habits[i].id===ed.getAttribute("data-cedit")) h=habits[i]; } if(h) openCkForm(h); return; } var b=e.target.closest("[data-del]"); if(b){ var id=b.getAttribute("data-del"); var hb=null; for(var zi=0;zi<habits.length;zi++){ if(habits[zi].id===id) hb=habits[zi]; } var hname=hb?hb.name:id; confirmDialog("删除习惯","删除该习惯及打卡记录？删除后可在提示里撤销。",function(){ var snapH=habits.filter(function(h){return h.id===id;}); var snapR={}; for(var k in records){ if(records[k]&&records[k][id]!=null) snapR[k]=records[k][id]; } habits=habits.filter(function(h){return h.id!==id;}); for(var k2 in records){ if(records[k2]) delete records[k2][id]; } storeSet(K_CKH,habits); storeSet(K_CKR,records); renderCheckin(); undoFn=function(){ for(var si=0;si<snapH.length;si++) habits.push(snapH[si]); storeSet(K_CKH,habits); for(var kk in snapR){ if(!records[kk]) records[kk]={}; records[kk][id]=snapR[kk]; } storeSet(K_CKR,records); renderCheckin(); }; showUndo("已删除习惯「"+hname+"」"); }); } });
+  $("ck-habits").addEventListener("click",function(e){ var hv=e.target.closest("[data-hview]"); if(hv){ openHabitView(hv.getAttribute("data-hview")); return; } var ed=e.target.closest("[data-cedit]"); if(ed){ var h=null; for(var i=0;i<habits.length;i++){ if(habits[i].id===ed.getAttribute("data-cedit")) h=habits[i]; } if(h) openCkForm(h); return; } var b=e.target.closest("[data-del]"); if(b){ var id=b.getAttribute("data-del"); var hb=null; for(var zi=0;zi<habits.length;zi++){ if(habits[zi].id===id) hb=habits[zi]; } var hname=hb?hb.name:id; confirmDialog("删除习惯","删除该习惯及打卡记录？删除后可在提示里撤销。",function(){ var snapH=habits.filter(function(h){return h.id===id;}); var snapR={}; for(var k in records){ if(records[k]&&records[k][id]!=null) snapR[k]=records[k][id]; } habits=habits.filter(function(h){return h.id!==id;}); for(var k2 in records){ if(records[k2]) delete records[k2][id]; } storeSet(K_CKH,habits); storeSet(K_CKR,records); renderCheckin(); undoFn=function(){ for(var si=0;si<snapH.length;si++) habits.push(snapH[si]); storeSet(K_CKH,habits); for(var kk in snapR){ if(!records[kk]) records[kk]={}; records[kk][id]=snapR[kk]; } storeSet(K_CKR,records); renderCheckin(); }; showUndo("已删除习惯「"+hname+"」"); }); } });
+  document.querySelectorAll('input[name="ck-daymode"]').forEach(function(r){ r.onchange=ckDaysToggleMode; });
+  $("ck-days-picker").addEventListener("click",function(e){ var c=e.target.closest("[data-d]"); if(!c) return; c.classList.toggle("sel"); var sels=$("ck-days-picker").querySelectorAll(".sel"), arr=[]; for(var i=0;i<sels.length;i++) arr.push(+sels[i].getAttribute("data-d")); $("ck-days-hint").textContent=arr.length?("已选 "+arr.length+" 天："+arr.slice().sort(function(a,b){return a-b;}).join("、")+" 号"):"勾选每个月中需要打卡的日期（可多选）"; });
+  $("ck-habits").addEventListener("dragstart",function(e){ var li=e.target.closest("[data-hid]"); if(li) ckDragId=li.getAttribute("data-hid"); });
+  $("ck-habits").addEventListener("dragover",function(e){ e.preventDefault(); });
+  $("ck-habits").addEventListener("drop",function(e){ e.preventDefault(); if(!ckDragId) return; var li=e.target.closest("[data-hid]"); if(!li) return; var toId=li.getAttribute("data-hid"); var from=-1,to=-1; for(var hi=0;hi<habits.length;hi++){ if(habits[hi].id===ckDragId) from=hi; if(habits[hi].id===toId) to=hi; } if(from>-1&&to>-1){ var moved=habits.splice(from,1)[0]; habits.splice(to,0,moved); storeSet(K_CKH,habits); renderCkHabits(); } ckDragId=null; });
+  $("hv-close").onclick=function(){ $("ckview-mask").classList.remove("show"); };
+  $("hv-prev").onclick=function(){ hvMonth--; if(hvMonth<0){hvMonth=11;hvYear--;} renderHabitView(); };
+  $("hv-next").onclick=function(){ hvMonth++; if(hvMonth>11){hvMonth=0;hvYear++;} renderHabitView(); };
+  $("ckview-mask").addEventListener("click",function(e){ if(e.target===$("ckview-mask")) $("ckview-mask").classList.remove("show"); });
+  initCkTouchDrag();
   bindCatManager("ck");
 
   // 日历
