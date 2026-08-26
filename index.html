@@ -218,6 +218,43 @@
   .upd-bar { display:none; position:fixed; top:0; left:0; right:0; z-index:99998; background:var(--ok); color:#fff; font-size:13px; padding:10px 14px; line-height:1.5; box-shadow:0 2px 8px rgba(0,0,0,.25); align-items:center; gap:10px; }
   .upd-bar .upd-close { margin-left:auto; border:none; background:rgba(255,255,255,.22); color:#fff; border-radius:8px; padding:4px 12px; cursor:pointer; flex-shrink:0; font-family:inherit; font-size:13px; }
   .app-ver { text-align:center; color:var(--muted); font-size:12px; margin-top:6px; }
+  /* 待办筛选条 */
+  .filter-bar { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+  .f-chip { border:1px solid var(--border); background:var(--card); border-radius:999px; padding:5px 14px; font-size:13px; color:var(--muted); font-family:inherit; cursor:pointer; }
+  .f-chip.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+  /* 标签红点角标 */
+  .tab { position:relative; }
+  .badge { position:absolute; top:3px; right:6px; min-width:16px; height:16px; border-radius:999px; background:#e03131; color:#fff; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; padding:0 4px; line-height:1; }
+  /* 月历联动标记 */
+  .cal-marks { display:flex; gap:2px; margin-top:2px; align-items:center; flex-wrap:wrap; }
+  .mark-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+  .mark-tri { width:0; height:0; border-left:4px solid transparent; border-right:4px solid transparent; border-bottom:6px solid #fd7e14; flex-shrink:0; }
+  /* 年视图联动标记（底部小条） */
+  .ym-cell { position:relative; }
+  .ym-cell.ym-todo::after { content:""; position:absolute; left:15%; right:15%; bottom:1px; height:2px; border-radius:2px; background:#e03131; }
+  .ym-cell.ym-prod::after { content:""; position:absolute; left:15%; right:15%; bottom:1px; height:2px; border-radius:2px; background:#fd7e14; }
+  .ym-cell.ym-todo.ym-prod::after { background:linear-gradient(90deg,#e03131 50%,#fd7e14 50%); }
+  /* 应用锁 PIN */
+  .pin-mask { position:fixed; inset:0; background:var(--bg); z-index:9500; display:none; align-items:center; justify-content:center; padding:20px; }
+  .pin-mask.show { display:flex; }
+  .pin-card { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:26px 20px; width:min(320px,100%); text-align:center; box-shadow:var(--shadow); }
+  .pin-card .pin-lock-ic { font-size:36px; margin-bottom:8px; }
+  .pin-card input { text-align:center; font-size:22px; letter-spacing:10px; font-weight:700; }
+  .pin-row { display:flex; gap:8px; margin-top:14px; }
+  .pin-row .btn { flex:1; }
+  /* 提醒弹窗条目 */
+  .rem-item { display:flex; align-items:flex-start; gap:8px; padding:7px 0; border-bottom:1px solid var(--border); font-size:14px; }
+  .rem-item:last-child { border-bottom:none; }
+  .rem-item .ri-type { font-size:11px; padding:1px 7px; border-radius:6px; flex-shrink:0; margin-top:2px; }
+  .ri-todo { background:#ffe3e3; color:#e03131; }
+  .ri-prod { background:#fff3bf; color:#f08c00; }
+  body.dark .ri-todo{background:#3a2226;color:#ff8787} body.dark .ri-prod{background:#3a3320;color:#ffd43b}
+  /* 周报 */
+  .wk-row { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--border); font-size:14px; }
+  .wk-row:last-child { border-bottom:none; }
+  .wk-row .wk-num { font-size:18px; font-weight:800; min-width:44px; text-align:center; color:var(--primary); }
+  /* 信息全部显示 */
+  .info-showall { white-space:nowrap; }
   .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9000; display:none; align-items:center; justify-content:center; padding:16px; }
   .modal-mask.show { display:flex; }
   .modal { background:var(--card); border-radius:16px; padding:20px; max-width:340px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.3); }
@@ -305,6 +342,9 @@
         <option value="created">按创建时间</option>
       </select>
     </div>
+    <div class="filter-bar" id="todo-filter">
+      <button class="f-chip active" data-f="all">全部</button><button class="f-chip" data-f="today">今天</button><button class="f-chip" data-f="week">本周</button><button class="f-chip" data-f="overdue">逾期</button>
+    </div>
     <div id="todo-list" class="list"></div>
     <div id="todo-form" class="form-card" style="display:none">
       <div class="form-title" id="todo-form-title">添加任务</div>
@@ -315,6 +355,7 @@
         <div class="field" style="flex:1"><label>优先级</label><select id="t-prio"><option value="low">低</option><option value="mid" selected>中</option><option value="high">高</option></select></div>
         <div class="field" style="flex:1"><label>截止日期</label><input type="date" id="t-due" /></div>
       </div>
+      <div class="field"><label>重复</label><select id="t-repeat"><option value="">不重复</option><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option></select><div class="ck-sub" style="margin-top:4px">重复任务勾选完成后会自动生成下一周期的任务（按截止日期推进）。</div></div>
       <div class="form-actions"><button class="btn btn-primary" id="add-btn">添加</button><button class="btn btn-ghost" id="cancel-btn">取消</button></div>
     </div>
     <button class="btn btn-primary" id="add-toggle" style="width:100%">＋ 添加任务</button>
@@ -416,6 +457,9 @@
           <div class="field"><label>分类</label><div class="cat-head"><select id="p-cat"></select><button type="button" class="cat-manage-toggle" id="prod-cat-manage-btn">管理</button></div><div class="cat-manage" id="prod-cat-manage"><div class="field" style="margin-top:8px"><label>新增分类</label><div class="cat-head"><input type="text" id="prod-cat-new-name" placeholder="分类名" maxlength="20" /><input type="color" id="prod-cat-new-color" value="#4c6ef5" /><button class="btn btn-sm" id="prod-cat-add-btn">添加</button></div></div><div id="prod-cat-list"></div></div></div>
           <div class="field"><label>到期日</label><input type="date" id="p-expire" /></div>
           <div class="field"><label>备注</label><input type="text" id="p-note" placeholder="可选" maxlength="80" /></div>
+          <textarea id="p-batch" rows="4" placeholder="批量添加：每行一条「名称,到期日」，如：&#10;白乳胶,2026-12-31&#10;颜料套装,2027-03-01&#10;热熔胶棒（无日期可留空）" style="display:none;margin-bottom:8px"></textarea>
+          <button class="btn btn-sm" id="p-batch-btn" style="margin-bottom:8px">批量添加（一次粘贴多行）</button>
+          <button class="btn btn-sm btn-primary" id="p-batch-apply" style="display:none;margin-bottom:8px">确认批量添加</button>
           <div class="form-actions"><button class="btn btn-primary" id="prod-add-btn">保存</button><button class="btn btn-ghost" id="prod-cancel-btn">取消</button></div>
         </div>
       </div>
@@ -429,6 +473,7 @@
     <div class="toolbar">
       <div class="search"><span class="ic" data-i="search"></span><input type="text" id="info-search" placeholder="搜索账号…" /><button class="search-clear" id="info-search-clear" style="display:none">×</button></div>
       <select id="info-cat-filter" style="width:auto"><option value="all">全部分类</option></select>
+      <button class="btn btn-sm info-showall" id="info-showall">全部显示</button>
     </div>
     <div id="info-list"></div>
     <div id="info-form" class="form-card" style="display:none">
@@ -468,6 +513,10 @@
         <div class="exp-row"><span class="exp-name">信息</span><button class="btn btn-sm" id="csv-info-btn">导出 CSV</button><button class="btn btn-sm" id="print-info-btn">打印</button></div>
       </div>
       <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:8px">本周小结（复盘：待办 / 打卡 / 保质期 / 信息）</div>
+        <button class="btn" id="week-btn"><span class="ic" data-i="star"></span> 查看本周小结</button>
+      </div>
+      <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px">
         <div style="font-size:13px;color:var(--muted);margin-bottom:6px">云端备份（数据加密后存到你的 GitHub 仓库，换设备/清理浏览器都不丢）</div>
         <div id="cloud-status" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
         <input type="text" id="cloud-token" placeholder="GitHub 令牌（github_pat_...）" style="width:100%;margin-bottom:6px" />
@@ -482,6 +531,15 @@
         <div style="font-size:12px;color:var(--muted);margin-top:6px">「存本地明文」= 生成一份<strong>不加密</strong>的备份文件，请存到手机『文件』App。即使忘了密码，导入这份文件也能恢复全部数据。</div>
         <div id="cloud-detail" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
       </div>
+      <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:6px">应用锁（4 位 PIN，打开应用先解锁，防他人翻看信息页等数据）</div>
+        <input type="password" id="pin-input" placeholder="4 位数字 PIN" inputmode="numeric" maxlength="4" style="width:100%;margin-bottom:6px" />
+        <div id="pin-status" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm" id="pin-set-btn">开启 / 修改 PIN</button>
+          <button class="btn btn-sm" id="pin-off-btn" style="display:none">关闭应用锁</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -491,6 +549,9 @@
 <div class="modal-mask" id="form-mask"></div>
 <div class="modal-mask" id="modal-mask"><div class="modal"><h3 id="modal-title"></h3><p id="modal-msg"></p><div class="modal-actions"><button class="btn" id="modal-cancel">取消</button><button class="btn btn-primary" id="modal-ok">确定</button></div></div></div>
 <div class="modal-mask" id="digest-mask"><div class="modal"><h3 id="digest-title">🌅 今日概览</h3><div id="digest-body"></div><div class="modal-actions"><button class="btn btn-primary" id="digest-ok">开始使用</button></div></div></div>
+<div class="pin-mask" id="pin-mask"><div class="pin-card"><div class="pin-lock-ic">🔒</div><div style="font-weight:700;font-size:17px;margin-bottom:4px">日程安排</div><div style="font-size:13px;color:var(--muted);margin-bottom:14px">请输入 PIN 解锁</div><input type="password" id="pin-unlock" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" /><div class="pin-row"><button class="btn btn-primary" id="pin-unlock-btn">解锁</button></div></div></div>
+<div class="modal-mask" id="remind-mask"><div class="modal"><h3>⏰ 提醒</h3><div id="remind-body"></div><div class="modal-actions"><button class="btn btn-primary" id="remind-ok" style="width:100%">知道了</button></div></div></div>
+<div class="modal-mask" id="week-mask"><div class="modal"><h3>📊 本周小结</h3><div id="week-body"></div><div class="modal-actions"><button class="btn btn-primary" id="week-ok" style="width:100%">关闭</button></div></div></div>
 <div class="modal-mask" id="ckview-mask"><div class="modal modal-wide"><div class="hv-head"><button id="hv-prev">‹</button><div id="hv-title" style="font-weight:700;font-size:15px"></div><button id="hv-next">›</button></div><div class="hv-week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div id="hv-grid" class="hv-grid"></div><div id="hv-stat" class="ck-sub" style="margin:10px 0 12px"></div><div class="modal-actions"><button class="btn btn-primary" id="hv-close" style="width:100%">关闭</button></div></div></div>
 <div id="print-view"></div>
 
@@ -565,6 +626,7 @@ var ckDate=keyToday(), ckSearch="", ckCatFilter="all", ckEditId=null, ckDragId=n
 var calView="month", calYear=new Date().getFullYear(), calMonth=new Date().getMonth(), calSel=null, calEdit=false, calEditKey=null;
 var calMonthSearch="", calSummarySearch="", prodSearch="";
 var infoSearch="", infoCatFilter="all", infoEditId=null;
+var todoFilter="all", infoShowAll=false, pinStore=storeGet("todo.app.pin","");
 
 /* ============ 工具 ============ */
 function $(id){ return document.getElementById(id); }
@@ -580,14 +642,24 @@ function fallbackCopy(txt){ try{ var ta=document.createElement("textarea"); ta.v
 function confirmDialog(title,msg,onOk){ var m=$("modal-mask"); $("modal-title").textContent=title; $("modal-msg").textContent=msg; m.classList.add("show"); $("modal-ok").onclick=function(){ m.classList.remove("show"); onOk(); }; $("modal-cancel").onclick=function(){ m.classList.remove("show"); }; }
 /* 表单弹窗共享遮罩：编辑/添加表单打开时显示，关闭时隐藏 */
 function formMask(on){ var fm=$("form-mask"); if(fm){ if(on) fm.classList.add("show"); else fm.classList.remove("show"); } }
+/* ============ 标签红点角标（待办逾期 / 保质期临期） ============ */
+function setBadge(id,n){ var el=$(id); if(!el) return; var b=el.querySelector(".badge"); if(n>0){ if(!b){ b=document.createElement("span"); b.className="badge"; el.appendChild(b); } b.textContent=n>99?"99+":n; } else if(b){ b.remove(); } }
+function updateBadges(){
+  try{
+    var tKey=todayKey();
+    var oT=todos.filter(function(t){ return !t.done&&t.due&&t.due<tKey; }).length;
+    var oP=products.filter(function(p){ return p.expire&&daysBetween(tKey,p.expire)<=3; }).length;
+    setBadge("tab-todo",oT); setBadge("tab-calendar",oP);
+  }catch(e){}
+}
 /* ============ 撤销删除（全局，各页共用的底部撤销条） ============ */
 var undoTimer=null, undoFn=null;
 function showUndo(msg){ var bar=$("undo-bar"); if(!bar){ bar=document.createElement("div"); bar.id="undo-bar"; bar.className="undo-bar"; bar.innerHTML='<span class="undo-msg"></span><button class="undo-btn" type="button">撤销</button>'; document.body.appendChild(bar); } bar.querySelector(".undo-msg").textContent=msg; bar.style.display="flex"; bar.querySelector(".undo-btn").onclick=function(){ if(undoFn){ var f=undoFn; undoFn=null; f(); } hideUndo(); }; if(undoTimer) clearTimeout(undoTimer); undoTimer=setTimeout(hideUndo,6000); }
 function hideUndo(){ var bar=$("undo-bar"); if(bar) bar.style.display="none"; undoFn=null; if(undoTimer){ clearTimeout(undoTimer); undoTimer=null; } }
 
 /* ============ 版本更新提示 ============ */
-var APP_VERSION="2026.08.26.9";
-var UPDATE_NOTE="新增导出表格与打印：数据管理里可一键导出待办 / 打卡 / 保质期 / 信息 的 CSV（Excel 可打开），也可直接打印（打印时可另存为 PDF）；信息页 CSV 含密码明文，请妥善保管。";
+var APP_VERSION="2026.08.26.10";
+var UPDATE_NOTE="新增 8 项功能：打开提醒（逾期待办/临期保质期）、待办筛选+红点、应用锁 PIN、重复待办（每天/每周/每月）、保质期批量粘贴录入、月历联动标记（红点=待办、三角=保质期）、本周小结、信息页密码一键全显。";
 function checkUpdate(){ try{ var seen=storeGet("todo.app.seenVer",""); if(seen===APP_VERSION) return; var bar=$("upd-bar"); if(bar){ bar.innerHTML='🎉 已更新到 v'+APP_VERSION+' · '+UPDATE_NOTE+' <button class="upd-close" id="upd-close">知道了</button>'; bar.style.display="flex"; var c=$("upd-close"); if(c) c.onclick=function(){ bar.style.display="none"; }; } storeSet("todo.app.seenVer",APP_VERSION); }catch(e){} }
 function showDigest(){
   try{
@@ -667,6 +739,7 @@ function todoItemHTML(t){
   var pl=t.prio==="high"?'<span class="prio prio-high">高</span>':t.prio==="mid"?'<span class="prio prio-mid">中</span>':'<span class="prio prio-low">低</span>';
   var meta=[]; if(t.cat) meta.push('<span class="cat-pill"><span class="cat-dot" style="background:'+escAttr(color)+'"></span>'+esc(t.cat)+'</span>');
   if(t.due) meta.push('<span>📅 '+esc(t.due)+'</span>');
+  if(t.repeat) meta.push('<span title="重复任务">🔁 '+({daily:"每天",weekly:"每周",monthly:"每月"}[t.repeat]||t.repeat)+'</span>');
   return '<li class="item'+(t.done?" done":"")+'" data-id="'+t.id+'" draggable="'+(t.done?"false":"true")+'">'
     +'<div class="chk" data-act="done">'+(t.done?svg("check",14):"")+'</div>'
     +'<div class="item-main"><div class="item-title">'+esc(t.text)+'</div>'+(t.content?'<div class="item-content">'+esc(t.content)+'</div>':'')+'<div class="item-meta">'+pl+meta.join("")+'</div></div>'
@@ -676,6 +749,7 @@ function todoItemHTML(t){
 function renderTodos(){
   var list=$("todo-list"); if(!list) return;
   var doneBox=$("todo-done"); if(!doneBox) return;
+  updateBadges();
   var arr=todos.slice();
   if(search){ var q=search.toLowerCase(); arr=arr.filter(function(t){ return ((t.text||"")+" "+((t.content||""))+" "+(t.cat||"")).toLowerCase().indexOf(q)>-1; }); }
   if(!arr.length){ list.innerHTML='<div class="empty">'+(search?"没有匹配的任务":"这里还空空如也～")+'</div>'; doneBox.innerHTML=""; return; }
@@ -684,7 +758,12 @@ function renderTodos(){
   var active=arr.filter(function(t){ return !t.done; });
   var doneArr=arr.filter(function(t){ return t.done; });
   var html="";
-  if(!active.length){ html+='<div class="empty">没有进行中的任务，太棒了 🎉</div>'; }
+  /* 筛选：今天 / 本周 / 逾期（只作用于进行中任务） */
+  var tKey=todayKey();
+  if(todoFilter==="today"){ active=active.filter(function(t){ return t.due===tKey; }); }
+  else if(todoFilter==="week"){ var nowD=new Date(tKey+"T00:00:00"); var wd0=nowD.getDay()||7; var monD=new Date(nowD); monD.setDate(nowD.getDate()-wd0+1); var mKey=calKey(monD.getFullYear(),monD.getMonth(),monD.getDate()); var nxD=new Date(monD); nxD.setDate(nxD.getDate()+7); var nKey=calKey(nxD.getFullYear(),nxD.getMonth(),nxD.getDate()); active=active.filter(function(t){ return t.due&&t.due>=mKey&&t.due<nKey; }); }
+  else if(todoFilter==="overdue"){ active=active.filter(function(t){ return t.due&&t.due<tKey; }); }
+  if(!active.length){ list.innerHTML='<div class="empty">'+(todoFilter==="all"?"没有进行中的任务，太棒了 🎉":"该筛选下暂无任务")+'</div>'; }
   else { html+=sortTodosHTML(active); }
   list.innerHTML=html;
   // 已完成列表独立渲染到「添加任务」按钮下方
@@ -716,8 +795,8 @@ function submit(){
   var cat=$("t-cat").value.trim();
   var c0=findCat(todoCats,cat); if(!c0){ ensureCat(todoCats,cat,"#4c6ef5"); c0=findCat(todoCats,cat); }
   var color=c0?c0.color:"#4c6ef5";
-  if(editId){ var t=null; for(var i=0;i<todos.length;i++){ if(todos[i].id===editId) t=todos[i]; } if(t){ t.text=text; t.content=content; t.cat=cat; t.prio=$("t-prio").value; t.due=$("t-due").value||""; } }
-  else { todos.push({id:uid(),text:text,content:content,cat:cat,prio:$("t-prio").value,due:$("t-due").value||"",done:false,order:todos.length+1,createdAt:Date.now()}); }
+  if(editId){ var t=null; for(var i=0;i<todos.length;i++){ if(todos[i].id===editId) t=todos[i]; } if(t){ t.text=text; t.content=content; t.cat=cat; t.prio=$("t-prio").value; t.due=$("t-due").value||""; t.repeat=$("t-repeat").value; } }
+  else { todos.push({id:uid(),text:text,content:content,cat:cat,prio:$("t-prio").value,due:$("t-due").value||"",repeat:$("t-repeat").value,done:false,order:todos.length+1,createdAt:Date.now()}); }
   storeSet(K_TODO,todos); renderTodoCats(); renderTodos(); hideForm();
 }
 function exitEdit(){ editId=null; }
@@ -1030,9 +1109,14 @@ function renderCalendar(){
     var rec=recur.filter(function(r){return r.month===(calMonth+1)&&r.day===d;}).length; if(rec) dots+='<span class="dot" style="background:#fab005"></span>';
     var hols=holidaysOf(calYear,calMonth+1,d);
     var holHtml=""; if(hols.length){ holHtml='<div class="holiday" style="color:'+(hols[0].c||"")+'" title="'+escAttr(hols.map(function(h){return h.n;}).join(" / "))+'">'+esc(hols[0].n)+'</div>'; }
+    var marks=""; var mcount=0;
+    for(var ti=0;ti<todos.length;ti++){ var tt=todos[ti]; if(tt.due===key&&!tt.done){ if(mcount<4) marks+='<span class="mark-dot" style="background:'+(tt.due<tKey?"#868e96":"#e03131")+'" title="待办'+(tt.due<tKey?"(逾期)":"")+'：'+escAttr(tt.text||"")+'"></span>'; mcount++; } }
+    for(var pi=0;pi<products.length;pi++){ var pp=products[pi]; if(pp.expire===key){ if(mcount<4) marks+='<span class="mark-tri" title="保质期：'+escAttr(pp.name||"")+'"></span>'; mcount++; } }
+    if(mcount>4) marks+='<span style="font-size:9px;color:var(--muted)">+'+(mcount-4)+'</span>';
+    var marksHtml=marks?'<div class="cal-marks">'+marks+'</div>':"";
     var cls="cal-cell"+(imp?" important":"")+(key===tKey?" today":"");
     if(calMonthSearch){ if(calMatchKey(key)) cls+=" hit"; else cls+=" dim"; }
-    html+='<div class="'+cls+'" data-key="'+key+'"><span class="d">'+d+'</span>'+holHtml+'<div class="dots">'+dots+'</div></div>';
+    html+='<div class="'+cls+'" data-key="'+key+'"><span class="d">'+d+'</span>'+holHtml+'<div class="dots">'+dots+'</div>'+marksHtml+'</div>';
   }
   var total=startD+days; var rem=(7-total%7)%7; for(var r=0;r<rem;r++){ html+='<div class="cal-cell muted"><span class="d">'+(r+1)+'</span></div>'; }
   $("cal-grid").innerHTML=html;
@@ -1067,7 +1151,9 @@ function calSyncInputs(){
   recur=recs;
 }
 function saveCalEdit(){ if(!calSel) return; var data=calData[calSel]||{entries:[]}; data.important=$("cal-important").checked; calSyncInputs(); calData[calSel]=data; storeSet(K_CAL,calData); storeSet(K_RECUR,recur); calEdit=false; renderCalendar(); renderCalDetail(); }
-function renderYear(){ var html='<div class="year-nav"><button id="year-prev">◀ 前一年</button><span class="year-label">'+calYear+'</span><button id="year-next">后一年 ▶</button><button class="mini" id="year-this" style="margin-left:auto">返回今年</button></div><div class="year-grid">'; var hot=[]; for(var k in calData){ if(calData[k]&&calData[k].entries&&calData[k].entries.length) hot.push(k); } for(var m=0;m<12;m++){ html+='<div class="ym"><div class="ym-title">'+calYear+'/'+(m+1)+'</div><div class="ym-grid">'; var fd=new Date(calYear,m,1).getDay(); var ds=new Date(calYear,m+1,0).getDate(); for(var z=0;z<fd;z++) html+='<div class="ym-cell"></div>'; for(var d=1;d<=ds;d++){ var key=calKey(calYear,m,d); var hols=holidaysOf(calYear,m+1,d); var cls="ym-cell"; if(hot.indexOf(key)>-1) cls+=" hot"; if(calData[key]&&calData[key].important) cls+=" imp"; if(hols.length){ cls+=" hol"; if(hols[0].g==="uae") cls+=" hol-uae"; else if(hols[0].g==="adj") cls+=" hol-adj"; else if(hols[0].g==="work") cls+=" hol-work"; else if(hols[0].g==="intl") cls+=" hol-intl"; } html+='<div class="'+cls+'" data-yk="'+key+'"'+(hols.length?' title="'+escAttr(hols.map(function(h){return h.n;}).join(" / "))+'"':'')+'>'+d+'</div>'; } html+='</div></div>'; } html+='</div>'; $("cal-year").innerHTML=html;
+function renderYear(){ var html='<div class="year-nav"><button id="year-prev">◀ 前一年</button><span class="year-label">'+calYear+'</span><button id="year-next">后一年 ▶</button><button class="mini" id="year-this" style="margin-left:auto">返回今年</button></div><div class="year-grid">'; var hot=[]; for(var k in calData){ if(calData[k]&&calData[k].entries&&calData[k].entries.length) hot.push(k); } for(var m=0;m<12;m++){ html+='<div class="ym"><div class="ym-title">'+calYear+'/'+(m+1)+'</div><div class="ym-grid">'; var fd=new Date(calYear,m,1).getDay(); var ds=new Date(calYear,m+1,0).getDate(); for(var z=0;z<fd;z++) html+='<div class="ym-cell"></div>'; for(var d=1;d<=ds;d++){ var key=calKey(calYear,m,d); var hols=holidaysOf(calYear,m+1,d); var cls="ym-cell"; if(hot.indexOf(key)>-1) cls+=" hot"; if(calData[key]&&calData[key].important) cls+=" imp";
+      var ymt=false,ymp=false; for(var q=0;q<todos.length;q++){ if(todos[q].due===key&&!todos[q].done){ ymt=true; break; } } for(var q2=0;q2<products.length;q2++){ if(products[q2].expire===key){ ymp=true; break; } } if(ymt) cls+=" ym-todo"; if(ymp) cls+=" ym-prod";
+      if(hols.length){ cls+=" hol"; if(hols[0].g==="uae") cls+=" hol-uae"; else if(hols[0].g==="adj") cls+=" hol-adj"; else if(hols[0].g==="work") cls+=" hol-work"; else if(hols[0].g==="intl") cls+=" hol-intl"; } html+='<div class="'+cls+'" data-yk="'+key+'"'+(hols.length?' title="'+escAttr(hols.map(function(h){return h.n;}).join(" / "))+'"':'')+'>'+d+'</div>'; } html+='</div></div>'; } html+='</div>'; $("cal-year").innerHTML=html;
   // bind year nav (dynamic content)
   var p=$("year-prev"); if(p) p.onclick=function(){ calYear--; renderYear(); };
   var n=$("year-next"); if(n) n.onclick=function(){ calYear++; renderYear(); };
@@ -1089,6 +1175,7 @@ function renderProdCats(){ var sel=$("p-cat"); if(!sel) return; var cur=sel.valu
 function renderProdCatManage(){ var box=$("prod-cat-list"); if(box) box.innerHTML=prodCats.map(function(c){ return '<div class="cat-row"><span class="cat-dot" style="background:'+escAttr(c.color)+'"></span><span class="name">'+esc(c.name)+'</span><button class="mini del" data-pcat="'+escAttr(c.name)+'">删</button></div>'; }).join(""); }
 function renderProducts(){
   renderProdCats();
+  updateBadges();
   var q=(prodSearch||"").toLowerCase();
   if(!products.length){ $("prod-list").innerHTML='<div class="empty">还没有记录。</div>'; return; }
   var arr=products.slice().filter(function(p){ if(!q) return true; return (p.name+" "+(p.cat||"")+" "+(p.note||"")).toLowerCase().indexOf(q)>-1; }).sort(function(a,b){ return (a.expire||"9999")<(b.expire||"9999")?-1:1; });
@@ -1115,7 +1202,7 @@ function renderInfos(){
     if(!list.length){ box.innerHTML='<div class="empty">'+(infos.length?"没有匹配的记录":"还没有记录，点下方「添加条目」。")+'</div>'; return; }
     box.innerHTML=list.map(function(o){ var cat=findInfoCat(o.cat); var color=(cat&&cat.color)||"#94a3b8";
       var accountField=o.account?'<div class="info-field"><span class="if-label">账户</span><span class="if-val">'+esc(o.account)+'</span><button class="copy-btn" data-copy="'+escAttr(o.account)+'">'+svg("copy",16)+'</button></div>':"";
-      var passField=o.password?'<div class="info-field"><span class="if-label">MM</span><span class="if-val">'+masked(o.password)+'</span><button class="copy-btn" data-reveal="'+o.id+'">'+svg("eye",16)+'</button><button class="copy-btn" data-copy="'+escAttr(o.password)+'">'+svg("copy",16)+'</button></div>':"";
+      var passField=o.password?'<div class="info-field"><span class="if-label">MM</span><span class="if-val">'+(infoShowAll?esc(o.password):masked(o.password))+'</span>'+(infoShowAll?"":'<button class="copy-btn" data-reveal="'+o.id+'">'+svg("eye",16)+'</button>')+'<button class="copy-btn" data-copy="'+escAttr(o.password)+'">'+svg("copy",16)+'</button></div>':"";
       var emailField=o.email?'<div class="info-field"><span class="if-label">邮箱</span><span class="if-val">'+esc(o.email)+'</span><button class="copy-btn" data-copy="'+escAttr(o.email)+'">'+svg("copy",16)+'</button></div>':"";
       var urlField=""; if(o.url){ var u=o.url.trim(); if(u.indexOf("http")!==0) u="https://"+u; urlField='<div class="info-field"><span class="if-label">网址</span><a class="if-val" href="'+escAttr(u)+'" target="_blank" rel="noopener">'+esc(o.url)+'</a><button class="copy-btn" data-copy="'+escAttr(u)+'">'+svg("copy",16)+'</button></div>'; }
       var noteField=o.note?'<div class="info-note-wrap"><span class="info-note">'+esc(o.note)+'</span><button class="copy-btn" data-copy="'+escAttr(o.note)+'">'+svg("copy",16)+'</button></div>':"";
@@ -1175,6 +1262,57 @@ function printTodos(){ printData("待办清单",CSV_T_COLS,todosRows()); }
 function printCheckin(){ printData("打卡习惯",CSV_CK_COLS,checkinRows()); }
 function printProducts(){ printData("保质期记录",CSV_P_COLS,prodRows()); }
 function printInfos(){ printData("信息记录",CSV_I_COLS,infoRows()); }
+
+/* ============ 打开时提醒（待办逾期 / 保质期临期） ============ */
+function checkReminders(){
+  try{
+    var tKey=todayKey();
+    var oT=todos.filter(function(t){ return !t.done&&t.due&&t.due<tKey; }).sort(function(a,b){ return a.due<b.due?-1:1; });
+    var oP=products.filter(function(p){ return p.expire&&daysBetween(tKey,p.expire)<=3; }).sort(function(a,b){ return (a.expire||"")<(b.expire||"")?-1:1; });
+    if(!oT.length&&!oP.length) return;
+    var html="";
+    if(oT.length){ html+='<div style="font-weight:700;margin-bottom:6px;font-size:14px">📋 已过期待办（'+oT.length+'）</div>'; html+=oT.slice(0,8).map(function(t){ return '<div class="rem-item"><span class="ri-type ri-todo">待办</span><span class="entry-text">'+esc(t.text)+'</span><span class="ck-sub" style="margin-left:auto">'+esc(t.due)+'</span></div>'; }).join(""); if(oT.length>8) html+='<div class="ck-sub">…还有 '+(oT.length-8)+' 条</div>'; }
+    if(oP.length){ html+='<div style="font-weight:700;margin:10px 0 6px;font-size:14px">🧃 保质期到期 / 临期（'+oP.length+'）</div>'; html+=oP.slice(0,8).map(function(p){ var d=daysBetween(tKey,p.expire); return '<div class="rem-item"><span class="ri-type ri-prod">保质期</span><span class="entry-text">'+esc(p.name)+'</span><span class="ck-sub" style="margin-left:auto">'+(d<0?"已过期"+(-d)+"天":d===0?"今天到期":"剩 "+d+" 天")+'</span></div>'; }).join(""); if(oP.length>8) html+='<div class="ck-sub">…还有 '+(oP.length-8)+' 条</div>'; }
+    var dm=$("digest-mask");
+    if(dm&&dm.classList.contains("show")){ /* 晨间摘要正在显示，合并进去避免双弹窗 */
+      var db=$("digest-body"); if(db){ db.innerHTML+=html; } return;
+    }
+    var body=$("remind-body"); if(!body) return; body.innerHTML=html;
+    $("remind-mask").classList.add("show");
+    $("remind-ok").onclick=function(){ $("remind-mask").classList.remove("show"); };
+  }catch(e){}
+}
+
+/* ============ 本周小结 ============ */
+function showWeekReport(){
+  try{
+    var now=new Date(); var wd0=now.getDay()||7; var mon=new Date(now); mon.setDate(now.getDate()-wd0+1); mon.setHours(0,0,0,0);
+    var monKey=calKey(mon.getFullYear(),mon.getMonth(),mon.getDate());
+    var nx=new Date(mon); nx.setDate(nx.getDate()+7); var nxKey=calKey(nx.getFullYear(),nx.getMonth(),nx.getDate());
+    var sun=new Date(nx); sun.setDate(sun.getDate()-1); var sunKey=calKey(sun.getFullYear(),sun.getMonth(),sun.getDate());
+    var newT=todos.filter(function(t){ var c=t.createdAt?new Date(t.createdAt):null; return c&&c>=mon&&c<nx; }).length;
+    var overdueT=todos.filter(function(t){ return !t.done&&t.due&&t.due<monKey; }).length;
+    var doneAll=todos.filter(function(t){ return t.done; }).length;
+    var dueC=0,doneC=0; var cur=new Date(mon);
+    for(var i=0;i<7;i++){ var k=calKey(cur.getFullYear(),cur.getMonth(),cur.getDate()); habits.forEach(function(h){ if(habitActiveOn(h,k)){ dueC++; if(records[k]&&records[k][h.id]) doneC++; } }); cur.setDate(cur.getDate()+1); }
+    var rate=dueC?Math.round(doneC/dueC*100):100;
+    var expW=products.filter(function(p){ return p.expire&&p.expire>=monKey&&p.expire<nxKey; }).length;
+    var expO=products.filter(function(p){ return p.expire&&p.expire<monKey; }).length;
+    var html="";
+    html+='<div class="wk-row"><span>📋 待办</span><span style="margin-left:auto;color:var(--muted);font-size:12px">本周新增 '+newT+' · 逾期 '+overdueT+' · 已完成累计 '+doneAll+'</span></div>';
+    html+='<div class="wk-row"><span>🔔 打卡</span><span style="margin-left:auto;color:var(--muted);font-size:12px">本周 '+doneC+'/'+dueC+' 次 · 完成率 '+rate+'%</span></div>';
+    html+='<div class="wk-row"><span>🧃 保质期</span><span style="margin-left:auto;color:var(--muted);font-size:12px">本周到期 '+expW+' · 已过期 '+expO+'</span></div>';
+    html+='<div class="wk-row"><span>🔐 信息</span><span style="margin-left:auto;color:var(--muted);font-size:12px">共 '+infos.length+' 条</span></div>';
+    html+='<div class="wk-row"><span>📅 日历</span><span style="margin-left:auto;color:var(--muted);font-size:12px">共 '+Object.keys(calData).length+' 天有记录</span></div>';
+    html+='<div class="ck-sub" style="margin-top:10px">统计范围：'+fmtKey(monKey)+' ~ '+fmtKey(sunKey)+'（本周）</div>';
+    $("week-body").innerHTML=html;
+    $("week-mask").classList.add("show");
+    $("week-ok").onclick=function(){ $("week-mask").classList.remove("show"); };
+  }catch(e){ showErr("周报生成失败："+e.message); }
+}
+
+/* ============ 应用锁 PIN ============ */
+function renderPinStatus(){ var el=$("pin-status"); if(!el) return; el.textContent=pinStore?"已开启：打开应用需输入 PIN":"未开启"; var off=$("pin-off-btn"); if(off) off.style.display=pinStore?"":"none"; }
 
 /* ============ 云端备份（加密存 GitHub） ============ */
 var CLOUD_REPO="migtian/migtian.github.io", CLOUD_PATH="backup/todo-backup.enc";
@@ -1239,13 +1377,14 @@ function bind(){
   $("tab-checkin").onclick=function(){ switchTab("checkin"); };
   $("tab-info").onclick=function(){ switchTab("info"); };
   // 待办
-  $("add-toggle").onclick=function(){ editId=null; $("t-text").value=""; $("t-content").value=""; $("t-cat").value=""; $("t-prio").value="mid"; $("t-due").value=""; showForm(); };
+  $("add-toggle").onclick=function(){ editId=null; $("t-text").value=""; $("t-content").value=""; $("t-cat").value=""; $("t-prio").value="mid"; $("t-due").value=""; $("t-repeat").value=""; showForm(); };
   $("cancel-btn").onclick=hideForm;
   $("add-btn").onclick=submit;
   $("sort-sel").onchange=function(){ sortMode=$("sort-sel").value; renderTodos(); };
+  $("todo-filter").addEventListener("click",function(e){ var c=e.target.closest(".f-chip"); if(!c) return; todoFilter=c.getAttribute("data-f"); var chips=$("todo-filter").querySelectorAll(".f-chip"); for(var i=0;i<chips.length;i++) chips[i].classList.toggle("active",chips[i]===c); renderTodos(); });
   $("search").addEventListener("input",function(e){ search=e.target.value.trim(); $("todo-search-clear").style.display=search?"":"none"; renderTodos(); });
   $("todo-search-clear").onclick=function(){ $("search").value=""; search=""; $("todo-search-clear").style.display="none"; renderTodos(); };
-  function onTodoClick(e){ var actEl=e.target.closest("[data-act]"); var act=actEl?actEl.getAttribute("data-act"):null; if(act==="clear-done"){ var dn=todos.filter(function(t){return t.done;}); if(!dn.length) return; confirmDialog("清空已完成","确定删除全部 "+dn.length+" 条已完成任务？删除后可在提示里撤销。",function(){ var snap=dn.slice(); todos=todos.filter(function(t){return !t.done;}); for(var i=0;i<todos.length;i++) todos[i].order=i+1; storeSet(K_TODO,todos); renderTodos(); undoFn=function(){ for(var j=0;j<snap.length;j++) todos.push(snap[j]); for(var i=0;i<todos.length;i++) todos[i].order=i+1; storeSet(K_TODO,todos); renderTodos(); }; showUndo("已清空 "+snap.length+" 条已完成"); }); return; } if(act==="toggle-done"){ doneCollapsed=!doneCollapsed; renderTodos(); return; } var li=e.target.closest(".item"); if(!li) return; var id=li.getAttribute("data-id"); if(act==="done"){ for(var i=0;i<todos.length;i++){ if(todos[i].id===id) todos[i].done=!todos[i].done; } storeSet(K_TODO,todos); renderTodos(); } else if(act==="edit"){ var t=null; for(var j=0;j<todos.length;j++){ if(todos[j].id===id) t=todos[j]; } if(t){ editId=id; $("t-text").value=t.text; $("t-content").value=t.content||""; $("t-cat").value=t.cat||""; $("t-prio").value=t.prio||"mid"; $("t-due").value=t.due||""; showForm(); } } else if(act==="del"){ var di=-1,ditem=null; for(var k=0;k<todos.length;k++){ if(todos[k].id===id){ di=k; ditem=todos[k]; break; } } if(!ditem) return; confirmDialog("删除任务","确定删除这条任务？删除后可在提示里撤销。",function(){ var snap=ditem, snapIdx=di; todos.splice(snapIdx,1); storeSet(K_TODO,todos); renderTodos(); undoFn=function(){ todos.splice(Math.min(snapIdx,todos.length),0,snap); storeSet(K_TODO,todos); renderTodos(); }; showUndo("已删除「"+snap.text+"」"); }); } }
+  function onTodoClick(e){ var actEl=e.target.closest("[data-act]"); var act=actEl?actEl.getAttribute("data-act"):null; if(act==="clear-done"){ var dn=todos.filter(function(t){return t.done;}); if(!dn.length) return; confirmDialog("清空已完成","确定删除全部 "+dn.length+" 条已完成任务？删除后可在提示里撤销。",function(){ var snap=dn.slice(); todos=todos.filter(function(t){return !t.done;}); for(var i=0;i<todos.length;i++) todos[i].order=i+1; storeSet(K_TODO,todos); renderTodos(); undoFn=function(){ for(var j=0;j<snap.length;j++) todos.push(snap[j]); for(var i=0;i<todos.length;i++) todos[i].order=i+1; storeSet(K_TODO,todos); renderTodos(); }; showUndo("已清空 "+snap.length+" 条已完成"); }); return; } if(act==="toggle-done"){ doneCollapsed=!doneCollapsed; renderTodos(); return; } var li=e.target.closest(".item"); if(!li) return; var id=li.getAttribute("data-id"); if(act==="done"){ var tdo=null; for(var i=0;i<todos.length;i++){ if(todos[i].id===id) tdo=todos[i]; } if(tdo&&!tdo.done&&tdo.repeat&&tdo.due){ var nd=new Date(tdo.due+"T00:00:00"); if(tdo.repeat==="daily") nd.setDate(nd.getDate()+1); else if(tdo.repeat==="weekly") nd.setDate(nd.getDate()+7); else if(tdo.repeat==="monthly"){ var y2=nd.getFullYear(),m2=nd.getMonth()+1,d2=nd.getDate(); m2++; if(m2>12){m2=1;y2++;} var ld2=new Date(y2,m2,0).getDate(); nd=new Date(y2,m2-1,Math.min(d2,ld2)); } var ndKey=calKey(nd.getFullYear(),nd.getMonth(),nd.getDate()); todos.push({id:uid(),text:tdo.text,content:tdo.content||"",cat:tdo.cat||"",prio:tdo.prio||"mid",due:ndKey,done:false,repeat:tdo.repeat,order:todos.length+1,createdAt:Date.now()}); toast("已生成下次任务（"+ndKey+"）"); } if(tdo) tdo.done=!tdo.done; storeSet(K_TODO,todos); renderTodos(); } else if(act==="edit"){ var t=null; for(var j=0;j<todos.length;j++){ if(todos[j].id===id) t=todos[j]; } if(t){ editId=id; $("t-text").value=t.text; $("t-content").value=t.content||""; $("t-cat").value=t.cat||""; $("t-prio").value=t.prio||"mid"; $("t-due").value=t.due||""; $("t-repeat").value=t.repeat||""; showForm(); } } else if(act==="del"){ var di=-1,ditem=null; for(var k=0;k<todos.length;k++){ if(todos[k].id===id){ di=k; ditem=todos[k]; break; } } if(!ditem) return; confirmDialog("删除任务","确定删除这条任务？删除后可在提示里撤销。",function(){ var snap=ditem, snapIdx=di; todos.splice(snapIdx,1); storeSet(K_TODO,todos); renderTodos(); undoFn=function(){ todos.splice(Math.min(snapIdx,todos.length),0,snap); storeSet(K_TODO,todos); renderTodos(); }; showUndo("已删除「"+snap.text+"」"); }); } }
   $("todo-list").addEventListener("click",onTodoClick);
   $("todo-done").addEventListener("click",onTodoClick);
   $("todo-list").addEventListener("dragstart",function(e){ var li=e.target.closest(".item"); if(li) draggingId=li.getAttribute("data-id"); });
@@ -1308,6 +1447,8 @@ function bind(){
   $("cal-detail-sub").textContent="";
   // 保质期
   $("prod-toggle").onclick=function(){ var f=$("prod-form"); var on=f.style.display==="none"; f.style.display=on?"":"none"; formMask(on); };
+  $("p-batch-btn").onclick=function(){ $("p-batch").style.display=""; $("p-batch-apply").style.display=""; $("p-batch-btn").style.display="none"; $("p-batch").focus(); };
+  $("p-batch-apply").onclick=function(){ var txt=$("p-batch").value; var lines=txt.split(/\r?\n/).map(function(s){return s.trim();}).filter(Boolean); if(!lines.length){ toast("请先输入内容"); return; } var added=0; lines.forEach(function(ln){ var m=ln.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/); var name=ln, exp=""; if(m){ exp=m[1]+"-"+pad(+m[2])+"-"+pad(+m[3]); name=ln.replace(m[0],"").replace(/[,\t，\s]+$/,"").trim().replace(/^[\s\d]*[\.、\)]\s*/,""); } if(!name){ var parts=ln.split(/[,\t，]/); name=(parts[0]||"").trim(); } if(!name) return; products.push({id:uid(),name:name.slice(0,40),cat:$("p-cat").value.trim()||"",expire:exp,note:""}); added++; }); storeSet(K_PROD,products); $("p-batch").value=""; $("p-batch").style.display="none"; $("p-batch-apply").style.display="none"; $("p-batch-btn").style.display=""; renderProducts(); toast("已批量添加 "+added+" 条"); };
   $("prod-cancel-btn").onclick=function(){ $("prod-form").style.display="none"; formMask(false); };
   $("prod-add-btn").onclick=function(){ var name=$("p-name").value.trim(); if(!name){ toast("请输入名称"); return; } var cat=$("p-cat").value.trim(); var c0=findCat(prodCats,cat); if(cat&&!c0){ prodCats.push({name:cat,color:"#4c6ef5"}); storeSet(K_PRODCAT,prodCats); c0=findCat(prodCats,cat); } var color=c0?c0.color:"#4c6ef5"; products.push({id:uid(),name:name,cat:cat,color:color,expire:$("p-expire").value||"",note:$("p-note").value.trim()}); storeSet(K_PROD,products); $("p-name").value=""; $("p-expire").value=""; $("p-note").value=""; $("prod-form").style.display="none"; formMask(false); renderProducts(); };
   $("prod-list").addEventListener("click",function(e){ var ed=e.target.closest("[data-pedit]"); if(ed){ var id=ed.getAttribute("data-pedit"); var p=null; for(var i=0;i<products.length;i++){ if(products[i].id===id) p=products[i]; } if(p){ $("p-name").value=p.name; $("p-cat").value=p.cat||""; $("p-expire").value=p.expire||""; $("p-note").value=p.note||""; $("prod-form").style.display=""; formMask(true); products=products.filter(function(x){return x.id!==id;}); storeSet(K_PROD,products); renderProducts(); } } var dl=e.target.closest("[data-pdel]"); if(dl){ var did=dl.getAttribute("data-pdel"); var pitem=null,pidx=-1; for(var pi=0;pi<products.length;pi++){ if(products[pi].id===did){ pitem=products[pi]; pidx=pi; break; } } if(!pitem) return; confirmDialog("删除","确定删除？删除后可在提示里撤销。",function(){ var snap=pitem,snapIdx=pidx; products=products.filter(function(x){return x.id!==did;}); storeSet(K_PROD,products); renderProducts(); undoFn=function(){ products.splice(Math.min(snapIdx,products.length),0,snap); storeSet(K_PROD,products); renderProducts(); }; showUndo("已删除「"+snap.name+"」"); }); } });
@@ -1320,6 +1461,7 @@ function bind(){
   $("info-search").addEventListener("input",function(e){ infoSearch=e.target.value.trim(); $("info-search-clear").style.display=infoSearch?"":"none"; renderInfos(); });
   $("info-search-clear").onclick=function(){ $("info-search").value=""; infoSearch=""; $("info-search-clear").style.display="none"; renderInfos(); };
   $("info-cat-filter").onchange=function(){ infoCatFilter=$("info-cat-filter").value; renderInfos(); };
+  $("info-showall").onclick=function(){ infoShowAll=!infoShowAll; $("info-showall").textContent=infoShowAll?"收起密码":"全部显示"; renderInfos(); };
   $("info-list").addEventListener("click",function(e){ var rv=e.target.closest("[data-reveal]"); if(rv){ var id=rv.getAttribute("data-reveal"); var o=null; for(var i=0;i<infos.length;i++){ if(infos[i].id===id) o=infos[i]; } if(o){ rv.parentNode.querySelector(".if-val").textContent=(rv.parentNode.querySelector(".if-val").textContent===masked(o.password))?o.password:masked(o.password); } return; } var cp=e.target.closest("[data-copy]"); if(cp){ copyText(cp.getAttribute("data-copy")); return; } var ed=e.target.closest("[data-iedit]"); if(ed){ var eid=ed.getAttribute("data-iedit"); var io=null; for(var j=0;j<infos.length;j++){ if(infos[j].id===eid) io=infos[j]; } if(io) openInfoForm(io); } var dl=e.target.closest("[data-idel]"); if(dl){ var did=dl.getAttribute("data-idel"); var iitem=null,iidx=-1; for(var ii=0;ii<infos.length;ii++){ if(infos[ii].id===did){ iitem=infos[ii]; iidx=ii; break; } } if(!iitem) return; confirmDialog("删除条目","确定删除这条记录？删除后可在提示里撤销。",function(){ var snap=iitem,snapIdx=iidx; infos=infos.filter(function(x){return x.id!==did;}); storeSet(K_INFO,infos); renderInfos(); undoFn=function(){ infos.splice(Math.min(snapIdx,infos.length),0,snap); storeSet(K_INFO,infos); renderInfos(); }; showUndo("已删除「"+(snap.title||"记录")+"」"); }); } });
   bindCatManager("info");
 
@@ -1342,12 +1484,22 @@ function bind(){
   $("cloud-restore-btn").onclick=function(){ var t=$("cloud-token").value.trim(),p=$("cloud-pwd").value; if(!t){ toast("请先粘贴 GitHub 令牌"); return; } if(!p){ toast("请输入备份密码"); return; } saveCloudForm(); var btn=$("cloud-restore-btn"); btn.disabled=true; btn.textContent="恢复中…"; cloudRestoreNow(t,p).then(function(){ btn.disabled=false; btn.textContent="从云端恢复"; }).catch(function(){ btn.disabled=false; btn.textContent="从云端恢复"; toast("恢复失败，请检查网络"); }); };
   $("cloud-plain-btn").onclick=function(){ saveCloudForm(); exportPlainBackup(); };
 
+  // 本周小结
+  $("week-btn").onclick=showWeekReport;
+
+  // 应用锁 PIN
+  renderPinStatus();
+  $("pin-set-btn").onclick=function(){ var v=$("pin-input").value.trim(); if(!/^\d{4}$/.test(v)){ toast("请输入 4 位数字 PIN"); return; } pinStore=v; storeSet("todo.app.pin",v); $("pin-input").value=""; renderPinStatus(); toast("应用锁已开启"); };
+  $("pin-off-btn").onclick=function(){ confirmDialog("关闭应用锁","确定关闭 PIN 锁？关闭后打开应用无需解锁，信息页数据将直接可见。",function(){ pinStore=""; storeSet("todo.app.pin",""); renderPinStatus(); toast("应用锁已关闭"); }); };
+  $("pin-unlock-btn").onclick=function(){ var v=$("pin-unlock").value.trim(); if(v===pinStore){ $("pin-mask").classList.remove("show"); $("pin-unlock").value=""; } else { toast("PIN 错误"); $("pin-unlock").value=""; } };
+  $("pin-unlock").addEventListener("keydown",function(e){ if(e.key==="Enter") $("pin-unlock-btn").click(); });
+
   // 主题
   $("theme-toggle").onclick=function(){ curTheme=curTheme==="dark"?"light":"dark"; storeSet(K_THEME,curTheme); applyTheme(curTheme); };
 }
 
 /* ============ 启动 ============ */
-try{ bind(); fillIcons(document); ensureHabitColors(); renderTodoCats(); renderTodos(); checkUpdate(); cloudRenderStatus(); cloudTryAuto(); if(storeGet("todo.app.lastDigest","")!==todayKey()){ storeSet("todo.app.lastDigest",todayKey()); showDigest(); } if($("app-ver")) $("app-ver").textContent="v"+APP_VERSION+" · 数据存于本机，清理浏览器会丢失，建议常备份"; }catch(e){ showErr("初始化失败："+e.message); }
+try{ bind(); fillIcons(document); ensureHabitColors(); renderTodoCats(); renderTodos(); checkUpdate(); cloudRenderStatus(); cloudTryAuto(); if(storeGet("todo.app.lastDigest","")!==todayKey()){ storeSet("todo.app.lastDigest",todayKey()); showDigest(); } if(pinStore) $("pin-mask").classList.add("show"); checkReminders(); if($("app-ver")) $("app-ver").textContent="v"+APP_VERSION+" · 数据存于本机，清理浏览器会丢失，建议常备份"; }catch(e){ showErr("初始化失败："+e.message); }
 </script>
 </body>
 </html>
