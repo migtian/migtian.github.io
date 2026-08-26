@@ -193,6 +193,21 @@
   .info-note { flex:1; font-size:13px; color:var(--muted); white-space:pre-wrap; word-break:break-word; }
   .dm-wrap { display:none; }
   .dm-wrap.show { display:block; }
+  .exp-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .exp-row:last-child { margin-bottom:0; }
+  .exp-row .exp-name { flex:1; font-size:13px; font-weight:600; }
+  #print-view { display:none; }
+  @media print {
+    body.printing > *:not(#print-view) { display:none !important; }
+    #print-view { display:block !important; }
+    #print-view table { width:100%; border-collapse:collapse; font-size:12px; page-break-inside:auto; }
+    #print-view tr { page-break-inside:avoid; }
+    #print-view th, #print-view td { border:1px solid #9aa4af; padding:5px 8px; text-align:left; word-break:break-word; }
+    #print-view th { background:#eceff1; font-weight:700; }
+    #print-view h2 { font-size:18px; margin:0 0 4px; }
+    #print-view .pv-sub { color:#555; font-size:12px; margin-bottom:12px; }
+    #print-view .pv-foot { margin-top:10px; font-size:11px; color:#777; }
+  }
   .toast { position:fixed; left:50%; bottom:90px; transform:translateX(-50%); background:rgba(31,36,48,.94); color:#fff; padding:10px 18px; border-radius:999px; font-size:14px; z-index:9999; opacity:0; transition:opacity .2s; pointer-events:none; }
   .undo-bar { display:none; position:fixed; left:50%; bottom:130px; transform:translateX(-50%); z-index:9999; background:rgba(31,36,48,.96); color:#fff; padding:10px 12px 10px 18px; border-radius:12px; font-size:14px; align-items:center; gap:14px; box-shadow:0 6px 24px rgba(0,0,0,.28); max-width:92vw; }
   .undo-bar .undo-msg { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -446,6 +461,13 @@
         <input type="file" id="import-file" accept="application/json,.json" style="display:none" />
       </div>
       <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:8px">导出表格 / 打印（CSV 可用 Excel 打开；打印时可选择「另存为 PDF」）<span style="display:block;font-size:12px;margin-top:2px">信息 CSV 含密码明文，请妥善保管。</span></div>
+        <div class="exp-row"><span class="exp-name">待办</span><button class="btn btn-sm" id="csv-todo-btn">导出 CSV</button><button class="btn btn-sm" id="print-todo-btn">打印</button></div>
+        <div class="exp-row"><span class="exp-name">打卡</span><button class="btn btn-sm" id="csv-ck-btn">导出 CSV</button><button class="btn btn-sm" id="print-ck-btn">打印</button></div>
+        <div class="exp-row"><span class="exp-name">保质期</span><button class="btn btn-sm" id="csv-prod-btn">导出 CSV</button><button class="btn btn-sm" id="print-prod-btn">打印</button></div>
+        <div class="exp-row"><span class="exp-name">信息</span><button class="btn btn-sm" id="csv-info-btn">导出 CSV</button><button class="btn btn-sm" id="print-info-btn">打印</button></div>
+      </div>
+      <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px">
         <div style="font-size:13px;color:var(--muted);margin-bottom:6px">云端备份（数据加密后存到你的 GitHub 仓库，换设备/清理浏览器都不丢）</div>
         <div id="cloud-status" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
         <input type="text" id="cloud-token" placeholder="GitHub 令牌（github_pat_...）" style="width:100%;margin-bottom:6px" />
@@ -470,6 +492,7 @@
 <div class="modal-mask" id="modal-mask"><div class="modal"><h3 id="modal-title"></h3><p id="modal-msg"></p><div class="modal-actions"><button class="btn" id="modal-cancel">取消</button><button class="btn btn-primary" id="modal-ok">确定</button></div></div></div>
 <div class="modal-mask" id="digest-mask"><div class="modal"><h3 id="digest-title">🌅 今日概览</h3><div id="digest-body"></div><div class="modal-actions"><button class="btn btn-primary" id="digest-ok">开始使用</button></div></div></div>
 <div class="modal-mask" id="ckview-mask"><div class="modal modal-wide"><div class="hv-head"><button id="hv-prev">‹</button><div id="hv-title" style="font-weight:700;font-size:15px"></div><button id="hv-next">›</button></div><div class="hv-week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div id="hv-grid" class="hv-grid"></div><div id="hv-stat" class="ck-sub" style="margin:10px 0 12px"></div><div class="modal-actions"><button class="btn btn-primary" id="hv-close" style="width:100%">关闭</button></div></div></div>
+<div id="print-view"></div>
 
 <script>
 "use strict";
@@ -563,8 +586,8 @@ function showUndo(msg){ var bar=$("undo-bar"); if(!bar){ bar=document.createElem
 function hideUndo(){ var bar=$("undo-bar"); if(bar) bar.style.display="none"; undoFn=null; if(undoTimer){ clearTimeout(undoTimer); undoTimer=null; } }
 
 /* ============ 版本更新提示 ============ */
-var APP_VERSION="2026.08.26.8";
-var UPDATE_NOTE="数据管理精简：移除与云端重复的「立即备份 / 每月本机快照」区，只保留导出备份、导入、导出日历与云端备份（备份到云端/从云端恢复/存本地明文）；云端已配置后每天自动备份一次，数据更稳。";
+var APP_VERSION="2026.08.26.9";
+var UPDATE_NOTE="新增导出表格与打印：数据管理里可一键导出待办 / 打卡 / 保质期 / 信息 的 CSV（Excel 可打开），也可直接打印（打印时可另存为 PDF）；信息页 CSV 含密码明文，请妥善保管。";
 function checkUpdate(){ try{ var seen=storeGet("todo.app.seenVer",""); if(seen===APP_VERSION) return; var bar=$("upd-bar"); if(bar){ bar.innerHTML='🎉 已更新到 v'+APP_VERSION+' · '+UPDATE_NOTE+' <button class="upd-close" id="upd-close">知道了</button>'; bar.style.display="flex"; var c=$("upd-close"); if(c) c.onclick=function(){ bar.style.display="none"; }; } storeSet("todo.app.seenVer",APP_VERSION); }catch(e){} }
 function showDigest(){
   try{
@@ -1130,6 +1153,29 @@ function exportICS(){
   }catch(e){ toast("导出日历失败"); }
 }
 
+/* ============ 导出 CSV / 打印 ============ */
+function csvEsc(s){ s=String(s==null?"":s); return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+function dlCSV(name,rows){ if(rows.length<=1){ toast("暂无数据可导出"); return; } var csv="\ufeff"+rows.map(function(r){ return r.map(csvEsc).join(","); }).join("\r\n"); var blob=new Blob([csv],{type:"text/csv;charset=utf-8"}); var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); toast("已导出 "+name); }
+function prioText(p){ return p==="high"?"高":p==="mid"?"中":p==="low"?"低":""; }
+var CSV_T_COLS=["标题","内容","分类","优先级","截止日期","状态"];
+function todosRows(){ var rows=[]; todos.slice().sort(function(a,b){return (a.order||0)-(b.order||0);}).forEach(function(t){ rows.push([t.text||"",t.content||"",t.cat||"",prioText(t.prio),t.due||"",t.done?"已完成":"进行中"]); }); return rows; }
+var CSV_CK_COLS=["习惯名称","内容","分类","开始日期","结束日期","打卡日","累计打卡","连续天数"];
+function checkinRows(){ var rows=[]; habits.forEach(function(h){ var cnt=0; for(var k in records){ if(records[k]&&records[k][h.id]) cnt++; } var dayTxt=(h.days&&h.days.length)?("每月 "+h.days.slice().sort(function(a,b){return a-b;}).join("/")+" 号"):"每天"; rows.push([h.name||"",h.content||"",h.cat||"",h.start||"",h.end||"",dayTxt,String(cnt),String(streakOf(h.id))]); }); return rows; }
+var CSV_P_COLS=["名称","分类","到期日期","剩余天数","状态","备注"];
+function prodRows(){ var rows=[]; products.slice().sort(function(a,b){ return (a.expire||"9999")<(b.expire||"9999")?-1:1; }).forEach(function(p){ var days=p.expire?daysBetween(todayKey(),p.expire):null; var st=days==null?"":days<0?"已过期"+(-days)+"天":days<=3?"即将到期（剩"+days+"天）":"剩 "+days+" 天"; rows.push([p.name||"",p.cat||"",p.expire||"",days==null?"":String(days),st,p.note||""]); }); return rows; }
+var CSV_I_COLS=["标题","分类","账户","密码","邮箱","网址","备注"];
+function infoRows(){ return infos.map(function(o){ return [o.title||"",o.cat||"",o.account||"",o.password||"",o.email||"",o.url||"",o.note||""]; }); }
+function exportTodosCSV(){ dlCSV("待办-"+todayKey()+".csv",[CSV_T_COLS].concat(todosRows())); }
+function exportCheckinCSV(){ dlCSV("打卡-"+todayKey()+".csv",[CSV_CK_COLS].concat(checkinRows())); }
+function exportProductsCSV(){ dlCSV("保质期-"+todayKey()+".csv",[CSV_P_COLS].concat(prodRows())); }
+function exportInfosCSV(){ dlCSV("信息-"+todayKey()+".csv",[CSV_I_COLS].concat(infoRows())); }
+function printData(title,cols,rows){ if(!rows.length){ toast("暂无数据可打印"); return; } var pv=$("print-view"); pv.innerHTML="<h2>"+esc(title)+"</h2><div class=\"pv-sub\">共 "+rows.length+" 条 · 生成于 "+new Date().toLocaleString()+"</div><table><thead><tr>"+cols.map(function(c){return "<th>"+esc(c)+"</th>";}).join("")+"</tr></thead><tbody>"+rows.map(function(r){return "<tr>"+r.map(function(c){return "<td>"+esc(c)+"</td>";}).join("")+"</tr>";}).join("")+"</tbody></table><div class=\"pv-foot\">日程安排 · "+APP_VERSION+"</div>"; document.body.classList.add("printing"); setTimeout(function(){ try{ window.print(); }catch(e){} },80); }
+window.addEventListener("afterprint",function(){ document.body.classList.remove("printing"); });
+function printTodos(){ printData("待办清单",CSV_T_COLS,todosRows()); }
+function printCheckin(){ printData("打卡习惯",CSV_CK_COLS,checkinRows()); }
+function printProducts(){ printData("保质期记录",CSV_P_COLS,prodRows()); }
+function printInfos(){ printData("信息记录",CSV_I_COLS,infoRows()); }
+
 /* ============ 云端备份（加密存 GitHub） ============ */
 var CLOUD_REPO="migtian/migtian.github.io", CLOUD_PATH="backup/todo-backup.enc";
 function cloudCfg(){ var c=storeGet("todo.app.cloud",null); return (c&&c.token)?c:{token:"",pwd:"",rememberPwd:true,hint:""}; }
@@ -1281,6 +1327,14 @@ function bind(){
   $("dm-toggle").onclick=function(){ $("data-mgmt-wrap").classList.toggle("show"); if($("data-mgmt-wrap").classList.contains("show")){ loadCloudForm(); cloudRenderStatus(); } };
   $("export-btn").onclick=exportData;
   $("export-ics-btn").onclick=exportICS;
+  $("csv-todo-btn").onclick=exportTodosCSV;
+  $("csv-ck-btn").onclick=exportCheckinCSV;
+  $("csv-prod-btn").onclick=exportProductsCSV;
+  $("csv-info-btn").onclick=exportInfosCSV;
+  $("print-todo-btn").onclick=printTodos;
+  $("print-ck-btn").onclick=printCheckin;
+  $("print-prod-btn").onclick=printProducts;
+  $("print-info-btn").onclick=printInfos;
   $("import-btn").onclick=function(){ $("import-file").click(); };
   $("import-file").addEventListener("change",function(e){ if(e.target.files&&e.target.files[0]) importData(e.target.files[0]); });
   // 云端备份
