@@ -90,7 +90,7 @@
   .done-head-left { display:inline-flex; align-items:center; gap:6px; }
   .done-head .mini.ghost { pointer-events:auto; }
   .done-section.collapsed .done-caret { transform:rotate(0deg); }
-  .form-card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px; box-shadow:var(--shadow); margin-bottom:14px; }
+  .form-card { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(92vw,430px); max-height:84vh; overflow-y:auto; -webkit-overflow-scrolling:touch; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px; box-shadow:0 14px 44px rgba(0,0,0,.32); z-index:9200; }
   .form-title { font-size:16px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:7px; }
   .form-actions { display:flex; gap:8px; margin-top:6px; }
   .cat-head { display:flex; gap:8px; align-items:center; }
@@ -475,6 +475,7 @@
   <div class="app-ver" id="app-ver"></div>
 
 <div id="toast" class="toast"></div>
+<div class="modal-mask" id="form-mask"></div>
 <div class="modal-mask" id="modal-mask"><div class="modal"><h3 id="modal-title"></h3><p id="modal-msg"></p><div class="modal-actions"><button class="btn" id="modal-cancel">取消</button><button class="btn btn-primary" id="modal-ok">确定</button></div></div></div>
 <div class="modal-mask" id="digest-mask"><div class="modal"><h3 id="digest-title">🌅 今日概览</h3><div id="digest-body"></div><div class="modal-actions"><button class="btn btn-primary" id="digest-ok">开始使用</button></div></div></div>
 <div class="modal-mask" id="ckview-mask"><div class="modal modal-wide"><div class="hv-head"><button id="hv-prev">‹</button><div id="hv-title" style="font-weight:700;font-size:15px"></div><button id="hv-next">›</button></div><div class="hv-week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div id="hv-grid" class="hv-grid"></div><div id="hv-stat" class="ck-sub" style="margin:10px 0 12px"></div><div class="modal-actions"><button class="btn btn-primary" id="hv-close" style="width:100%">关闭</button></div></div></div>
@@ -563,6 +564,8 @@ function toast(msg){ var t=$("toast"); t.textContent=msg; t.classList.add("show"
 function copyText(txt){ try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(function(){toast("已复制");},function(){fallbackCopy(txt);}); } else { fallbackCopy(txt); } }catch(e){ fallbackCopy(txt); } }
 function fallbackCopy(txt){ try{ var ta=document.createElement("textarea"); ta.value=txt; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); toast("已复制"); }catch(e){ toast("复制失败"); } }
 function confirmDialog(title,msg,onOk){ var m=$("modal-mask"); $("modal-title").textContent=title; $("modal-msg").textContent=msg; m.classList.add("show"); $("modal-ok").onclick=function(){ m.classList.remove("show"); onOk(); }; $("modal-cancel").onclick=function(){ m.classList.remove("show"); }; }
+/* 表单弹窗共享遮罩：编辑/添加表单打开时显示，关闭时隐藏 */
+function formMask(on){ var fm=$("form-mask"); if(fm){ if(on) fm.classList.add("show"); else fm.classList.remove("show"); } }
 /* ============ 撤销删除（全局，各页共用的底部撤销条） ============ */
 var undoTimer=null, undoFn=null;
 function showUndo(msg){ var bar=$("undo-bar"); if(!bar){ bar=document.createElement("div"); bar.id="undo-bar"; bar.className="undo-bar"; bar.innerHTML='<span class="undo-msg"></span><button class="undo-btn" type="button">撤销</button>'; document.body.appendChild(bar); } bar.querySelector(".undo-msg").textContent=msg; bar.style.display="flex"; bar.querySelector(".undo-btn").onclick=function(){ if(undoFn){ var f=undoFn; undoFn=null; f(); } hideUndo(); }; if(undoTimer) clearTimeout(undoTimer); undoTimer=setTimeout(hideUndo,6000); }
@@ -691,8 +694,8 @@ function sortTodosHTML(arr){
   else { arr.sort(function(a,b){ return (a.order||0)-(b.order||0); }); }
   return arr.map(todoItemHTML).join("");
 }
-function showForm(){ $("todo-form").style.display=""; $("todo-form-title").textContent=editId?"编辑任务":"添加任务"; $("add-toggle").style.display="none"; if(!editId) $("t-text").focus(); }
-function hideForm(){ $("todo-form").style.display="none"; $("add-toggle").style.display=""; editId=null; }
+function showForm(){ $("todo-form").style.display=""; $("todo-form-title").textContent=editId?"编辑任务":"添加任务"; $("add-toggle").style.display="none"; formMask(true); if(!editId) $("t-text").focus(); }
+function hideForm(){ $("todo-form").style.display="none"; $("add-toggle").style.display=""; editId=null; formMask(false); }
 function submit(){
   var text=$("t-text").value.trim(); if(!text){ toast("请输入标题"); return; }
   var content=$("t-content").value.trim();
@@ -819,7 +822,7 @@ function renderCheckin(){
   try{ renderCkReminder(); }catch(e){}
   try{ renderCkHeat(); }catch(e){}
 }
-function openCkForm(o){ ckEditId=o?o.id:null; $("ck-form-title").textContent=o?"编辑习惯":"添加习惯"; $("ck-name").value=o?o.name:""; $("ck-content").value=o?(o.content||""):""; $("ck-cat").value=o?o.cat:""; $("ck-start").value=o?o.start:""; $("ck-end").value=o?o.end:""; var daysMode=!!(o&&o.days&&o.days.length); $("ck-mode-daily").checked=!daysMode; $("ck-mode-days").checked=daysMode; renderCkDaysPicker(daysMode?o.days:[]); ckDaysToggleMode(); $("ck-form").style.display=""; }
+function openCkForm(o){ ckEditId=o?o.id:null; $("ck-form-title").textContent=o?"编辑习惯":"添加习惯"; $("ck-name").value=o?o.name:""; $("ck-content").value=o?(o.content||""):""; $("ck-cat").value=o?o.cat:""; $("ck-start").value=o?o.start:""; $("ck-end").value=o?o.end:""; var daysMode=!!(o&&o.days&&o.days.length); $("ck-mode-daily").checked=!daysMode; $("ck-mode-days").checked=daysMode; renderCkDaysPicker(daysMode?o.days:[]); ckDaysToggleMode(); $("ck-form").style.display=""; formMask(true); }
 function ckDaysMode(){ var m=document.querySelector('input[name="ck-daymode"]:checked'); return !!(m&&m.value==="days"); }
 function renderCkDaysPicker(sel){
   var box=$("ck-days-picker"); if(!box) return;
@@ -842,7 +845,7 @@ function submitHabit(){
   var daysVal=daysArr.length?daysArr:undefined;
   if(ckEditId){ for(var i=0;i<habits.length;i++){ if(habits[i].id===ckEditId){ habits[i].name=name; habits[i].content=content; habits[i].cat=cat; habits[i].color=color; habits[i].start=$("ck-start").value||""; habits[i].end=$("ck-end").value||""; if(daysVal) habits[i].days=daysVal; else delete habits[i].days; } } }
   else { var nh={id:uid(),name:name,content:content,cat:cat,color:color,createdAt:Date.now(),start:$("ck-start").value||"",end:$("ck-end").value||""}; if(daysVal) nh.days=daysVal; habits.push(nh); }
-  storeSet(K_CKH,habits); $("ck-form").style.display="none"; renderCheckin();
+  storeSet(K_CKH,habits); $("ck-form").style.display="none"; formMask(false); renderCheckin();
 }
 /* 单习惯月视图（打卡情况） */
 var hvYear=new Date().getFullYear(), hvMonth=new Date().getMonth(), hvId=null;
@@ -1106,7 +1109,7 @@ function renderInfos(){
     }).join("");
   }catch(e){ var b=document.getElementById("info-list"); if(b) b.innerHTML='<div class="empty">信息列表加载失败</div>'; }
 }
-function openInfoForm(o){ infoEditId=o?o.id:null; $("info-form-title").textContent=o?"编辑条目":"添加条目"; $("info-title").value=o?o.title:""; $("info-account").value=o?o.account:""; $("info-pass").value=o?o.password:""; $("info-email").value=o?o.email:""; $("info-url").value=o?o.url:""; $("info-cat").value=o?o.cat:""; $("info-note").value=o?o.note:""; $("info-form").style.display=""; }
+function openInfoForm(o){ infoEditId=o?o.id:null; $("info-form-title").textContent=o?"编辑条目":"添加条目"; $("info-title").value=o?o.title:""; $("info-account").value=o?o.account:""; $("info-pass").value=o?o.password:""; $("info-email").value=o?o.email:""; $("info-url").value=o?o.url:""; $("info-cat").value=o?o.cat:""; $("info-note").value=o?o.note:""; $("info-form").style.display=""; formMask(true); }
 function submitInfo(){
   var title=$("info-title").value.trim(); if(!title){ toast("请填写主标题"); return; }
   var cat=$("info-cat").value.trim();
@@ -1115,7 +1118,7 @@ function submitInfo(){
   if(cat&&!findInfoCat(cat)){ /* already added */ } else if(cat){ var cc=findInfoCat(cat); if(cc) cc.color=color; storeSet(K_INFOCAT,infoCats); }
   var data={title:title,account:$("info-account").value.trim(),password:$("info-pass").value,email:$("info-email").value.trim(),url:$("info-url").value.trim(),cat:cat,note:$("info-note").value.trim()};
   if(infoEditId){ for(var i=0;i<infos.length;i++){ if(infos[i].id===infoEditId) infos[i]=Object.assign(infos[i],data); } } else { data.id=uid(); infos.push(data); }
-  storeSet(K_INFO,infos); $("info-form").style.display="none"; renderInfos();
+  storeSet(K_INFO,infos); $("info-form").style.display="none"; formMask(false); renderInfos();
 }
 
 /* ============ 数据管理 ============ */
@@ -1242,7 +1245,7 @@ function bind(){
 
   // 打卡
   $("ck-add-toggle").onclick=function(){ openCkForm(null); };
-  $("ck-cancel-btn").onclick=function(){ $("ck-form").style.display="none"; };
+  $("ck-cancel-btn").onclick=function(){ $("ck-form").style.display="none"; formMask(false); };
   $("ck-add-btn").onclick=submitHabit;
   $("ck-search").addEventListener("input",function(e){ ckSearch=e.target.value.trim(); $("ck-search-clear").style.display=ckSearch?"":"none"; renderCkList(); });
   $("ck-search-clear").onclick=function(){ $("ck-search").value=""; ckSearch=""; $("ck-search-clear").style.display="none"; renderCkList(); };
@@ -1293,15 +1296,15 @@ function bind(){
   $("prod-search-clear").onclick=function(){ $("prod-search").value=""; prodSearch=""; $("prod-search-clear").style.display="none"; renderProducts(); };
   $("cal-detail-sub").textContent="";
   // 保质期
-  $("prod-toggle").onclick=function(){ var f=$("prod-form"); f.style.display=f.style.display===""?"none":""; };
-  $("prod-cancel-btn").onclick=function(){ $("prod-form").style.display="none"; };
-  $("prod-add-btn").onclick=function(){ var name=$("p-name").value.trim(); if(!name){ toast("请输入名称"); return; } var cat=$("p-cat").value.trim(); var c0=findCat(prodCats,cat); if(cat&&!c0){ prodCats.push({name:cat,color:"#4c6ef5"}); storeSet(K_PRODCAT,prodCats); c0=findCat(prodCats,cat); } var color=c0?c0.color:"#4c6ef5"; products.push({id:uid(),name:name,cat:cat,color:color,expire:$("p-expire").value||"",note:$("p-note").value.trim()}); storeSet(K_PROD,products); $("p-name").value=""; $("p-expire").value=""; $("p-note").value=""; $("prod-form").style.display="none"; renderProducts(); };
-  $("prod-list").addEventListener("click",function(e){ var ed=e.target.closest("[data-pedit]"); if(ed){ var id=ed.getAttribute("data-pedit"); var p=null; for(var i=0;i<products.length;i++){ if(products[i].id===id) p=products[i]; } if(p){ $("p-name").value=p.name; $("p-cat").value=p.cat||""; $("p-expire").value=p.expire||""; $("p-note").value=p.note||""; $("prod-form").style.display=""; products=products.filter(function(x){return x.id!==id;}); storeSet(K_PROD,products); renderProducts(); } } var dl=e.target.closest("[data-pdel]"); if(dl){ var did=dl.getAttribute("data-pdel"); var pitem=null,pidx=-1; for(var pi=0;pi<products.length;pi++){ if(products[pi].id===did){ pitem=products[pi]; pidx=pi; break; } } if(!pitem) return; confirmDialog("删除","确定删除？删除后可在提示里撤销。",function(){ var snap=pitem,snapIdx=pidx; products=products.filter(function(x){return x.id!==did;}); storeSet(K_PROD,products); renderProducts(); undoFn=function(){ products.splice(Math.min(snapIdx,products.length),0,snap); storeSet(K_PROD,products); renderProducts(); }; showUndo("已删除「"+snap.name+"」"); }); } });
+  $("prod-toggle").onclick=function(){ var f=$("prod-form"); var on=f.style.display==="none"; f.style.display=on?"":"none"; formMask(on); };
+  $("prod-cancel-btn").onclick=function(){ $("prod-form").style.display="none"; formMask(false); };
+  $("prod-add-btn").onclick=function(){ var name=$("p-name").value.trim(); if(!name){ toast("请输入名称"); return; } var cat=$("p-cat").value.trim(); var c0=findCat(prodCats,cat); if(cat&&!c0){ prodCats.push({name:cat,color:"#4c6ef5"}); storeSet(K_PRODCAT,prodCats); c0=findCat(prodCats,cat); } var color=c0?c0.color:"#4c6ef5"; products.push({id:uid(),name:name,cat:cat,color:color,expire:$("p-expire").value||"",note:$("p-note").value.trim()}); storeSet(K_PROD,products); $("p-name").value=""; $("p-expire").value=""; $("p-note").value=""; $("prod-form").style.display="none"; formMask(false); renderProducts(); };
+  $("prod-list").addEventListener("click",function(e){ var ed=e.target.closest("[data-pedit]"); if(ed){ var id=ed.getAttribute("data-pedit"); var p=null; for(var i=0;i<products.length;i++){ if(products[i].id===id) p=products[i]; } if(p){ $("p-name").value=p.name; $("p-cat").value=p.cat||""; $("p-expire").value=p.expire||""; $("p-note").value=p.note||""; $("prod-form").style.display=""; formMask(true); products=products.filter(function(x){return x.id!==id;}); storeSet(K_PROD,products); renderProducts(); } } var dl=e.target.closest("[data-pdel]"); if(dl){ var did=dl.getAttribute("data-pdel"); var pitem=null,pidx=-1; for(var pi=0;pi<products.length;pi++){ if(products[pi].id===did){ pitem=products[pi]; pidx=pi; break; } } if(!pitem) return; confirmDialog("删除","确定删除？删除后可在提示里撤销。",function(){ var snap=pitem,snapIdx=pidx; products=products.filter(function(x){return x.id!==did;}); storeSet(K_PROD,products); renderProducts(); undoFn=function(){ products.splice(Math.min(snapIdx,products.length),0,snap); storeSet(K_PROD,products); renderProducts(); }; showUndo("已删除「"+snap.name+"」"); }); } });
   bindCatManager("prod");
 
   // 信息
   $("info-add-toggle").onclick=function(){ openInfoForm(null); };
-  $("info-cancel-btn").onclick=function(){ $("info-form").style.display="none"; };
+  $("info-cancel-btn").onclick=function(){ $("info-form").style.display="none"; formMask(false); };
   $("info-add-btn").onclick=submitInfo;
   $("info-search").addEventListener("input",function(e){ infoSearch=e.target.value.trim(); $("info-search-clear").style.display=infoSearch?"":"none"; renderInfos(); });
   $("info-search-clear").onclick=function(){ $("info-search").value=""; infoSearch=""; $("info-search-clear").style.display="none"; renderInfos(); };
