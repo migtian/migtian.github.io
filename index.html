@@ -528,6 +528,12 @@
           <button class="btn btn-sm" id="cloud-restore-btn"><span class="ic" data-i="download"></span> 从云端恢复</button>
           <button class="btn btn-sm" id="cloud-plain-btn"><span class="ic" data-i="archive"></span> 存本地明文</button>
         </div>
+        <div style="margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--bg)">
+          <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:8px"><input type="checkbox" id="sync-toggle" /> <strong>自动同步</strong>（手机/电脑改动自动互通）</label>
+          <div id="sync-status" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
+          <button class="btn btn-sm" id="sync-now-btn"><span class="ic" data-i="download"></span> 立即同步</button>
+          <div style="font-size:12px;color:var(--muted);margin-top:8px">开启后：每次改动几秒后自动合并到云端，另一台设备打开即自动拉取合并；两边同时改同一条时保留较新的一方，删除 60 天内不会复活。需勾选「记住密码」。</div>
+        </div>
         <div style="font-size:12px;color:var(--muted);margin-top:6px">「存本地明文」= 生成一份<strong>不加密</strong>的备份文件，请存到手机『文件』App。即使忘了密码，导入这份文件也能恢复全部数据。</div>
         <div id="cloud-detail" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
       </div>
@@ -559,7 +565,63 @@
 "use strict";
 /* ============ 安全存储 ============ */
 function storeGet(k, def){ try{ var v=localStorage.getItem(k); return v==null?def:JSON.parse(v); }catch(e){ return def; } }
-function storeSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function rawSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+/* ============ 同步引擎：变更追踪（打时间戳 + 删除墓碑） ============ */
+var SYNC_ON=false, syncBase={}, syncBusy=false, syncLastAt=0, syncTimer=null, syncFormOpen=0;
+var SYNC_ID_KEYS=["todo.app.v7","todo.app.ck.habits","todo.app.prod","todo.app.info"];
+var SYNC_NAME_KEYS=["todo.app.cats","todo.app.prod.cats","todo.app.ck.cats","todo.app.info.cats"];
+var SYNC_SELF_KEYS=["todo.app.tomb","todo.app.kmeta","todo.app.ck.meta","todo.app.cloud","todo.app.cloudLast","todo.app.lastDigest","todo.app.syncLast"];
+function stripU(r){ if(!r||typeof r!=="object") return r; var o={}; for(var kk in r){ if(kk!=="u") o[kk]=r[kk]; } return o; }
+function recurKeyOf(r){ return r.month+"-"+r.day+"-"+(r.text||""); }
+function syncTrack(k, v){
+  if(!SYNC_ON) return;
+  var now=Date.now(), changed=false;
+  if(SYNC_ID_KEYS.indexOf(k)>-1 || SYNC_NAME_KEYS.indexOf(k)>-1){
+    var idf=SYNC_ID_KEYS.indexOf(k)>-1?"id":"name";
+    var base=syncBase[k]||[], bm={}, vm={};
+    base.forEach(function(r){ if(r&&r[idf]!=null) bm[r[idf]]=r; });
+    (v||[]).forEach(function(r){ if(r&&r[idf]!=null) vm[r[idf]]=r; });
+    (v||[]).forEach(function(r){
+      if(r&&r[idf]!=null){
+        var b=bm[r[idf]];
+        if(!b || JSON.stringify(stripU(b))!==JSON.stringify(stripU(r))){ r.u=now; changed=true; }
+        if(tombHas(k+":"+r[idf])){ tombDel(k+":"+r[idf]); changed=true; }
+      }
+    });
+    base.forEach(function(r){ if(r&&r[idf]!=null && !vm[r[idf]]){ tombSet(k+":"+r[idf],now); changed=true; } });
+  } else if(k==="todo.app.cal"){
+    var bc=syncBase[k]||{};
+    for(var d in v){ if(!v[d]) continue; var b2=bc[d];
+      if(!b2 || JSON.stringify(stripU(b2))!==JSON.stringify(stripU(v[d]))){ v[d].u=now; changed=true; }
+      if(tombHas("todo.app.cal:"+d)){ tombDel("todo.app.cal:"+d); changed=true; } }
+    for(var d2 in bc){ if(bc[d2] && !v[d2]){ tombSet("todo.app.cal:"+d2,now); changed=true; } }
+  } else if(k==="todo.app.ck.records"){
+    var br=syncBase[k]||{}, meta=storeGet("todo.app.ck.meta",null)||{}, mch=false;
+    for(var d3 in v){ if(!v[d3]) continue; for(var h in v[d3]){ if(!(br[d3]&&br[d3][h])){ meta[d3+"|"+h]={t:now,v:1}; mch=true; } } }
+    for(var d4 in br){ if(!br[d4]) continue; for(var h2 in br[d4]){ if(!(v[d4]&&v[d4][h2])){ meta[d4+"|"+h2]={t:now,v:0}; mch=true; } } }
+    if(mch){ rawSet("todo.app.ck.meta",meta); changed=true; }
+  } else if(k==="todo.app.recur"){
+    var brr=syncBase[k]||[], bmk={}, vmk={};
+    brr.forEach(function(r){ bmk[recurKeyOf(r)]=r; });
+    (v||[]).forEach(function(r){ vmk[recurKeyOf(r)]=r; });
+    (v||[]).forEach(function(r){ var kk2=recurKeyOf(r);
+      if(!bmk[kk2]){ r.u=now; changed=true; }
+      if(tombHas("todo.app.recur:"+kk2)){ tombDel("todo.app.recur:"+kk2); changed=true; } });
+    brr.forEach(function(r){ var kk3=recurKeyOf(r); if(!vmk[kk3]){ tombSet("todo.app.recur:"+kk3,now); changed=true; } });
+  } else if(SYNC_SELF_KEYS.indexOf(k)>-1){
+    return;
+  } else {
+    var km=storeGet("todo.app.kmeta",null)||{};
+    var bv=syncBase.hasOwnProperty(k)?syncBase[k]:null;
+    if(JSON.stringify(bv===undefined?null:bv)!==JSON.stringify(v===undefined?null:v)){ km[k]=now; rawSet("todo.app.kmeta",km); changed=true; }
+  }
+  if(changed) scheduleSync();
+}
+function tombAll(){ return storeGet("todo.app.tomb",null)||{}; }
+function tombHas(f){ return !!tombAll()[f]; }
+function tombSet(f,ts){ var t=tombAll(); t[f]=ts; rawSet("todo.app.tomb",t); }
+function tombDel(f){ var t=tombAll(); if(t[f]!=null){ delete t[f]; rawSet("todo.app.tomb",t); } }
+function storeSet(k, v){ try{ syncTrack(k, v); }catch(e){} try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 function esc(s){ s=String(s==null?"":s); return s.replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
 function escAttr(s){ return esc(s); }
@@ -641,7 +703,7 @@ function copyText(txt){ try{ if(navigator.clipboard&&navigator.clipboard.writeTe
 function fallbackCopy(txt){ try{ var ta=document.createElement("textarea"); ta.value=txt; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); toast("已复制"); }catch(e){ toast("复制失败"); } }
 function confirmDialog(title,msg,onOk){ var m=$("modal-mask"); $("modal-title").textContent=title; $("modal-msg").textContent=msg; m.classList.add("show"); $("modal-ok").onclick=function(){ m.classList.remove("show"); onOk(); }; $("modal-cancel").onclick=function(){ m.classList.remove("show"); }; }
 /* 表单弹窗共享遮罩：编辑/添加表单打开时显示，关闭时隐藏 */
-function formMask(on){ var fm=$("form-mask"); if(fm){ if(on) fm.classList.add("show"); else fm.classList.remove("show"); } }
+function formMask(on){ syncFormOpen=on?Math.max(0,syncFormOpen)+1:Math.max(0,syncFormOpen-1); if(syncFormOpen===0&&!on&&SYNC_ON) scheduleSync(); var fm=$("form-mask"); if(fm){ if(on) fm.classList.add("show"); else fm.classList.remove("show"); } }
 /* ============ 标签红点角标（待办逾期 / 保质期临期） ============ */
 function setBadge(id,n){ var el=$(id); if(!el) return; var b=el.querySelector(".badge"); if(n>0){ if(!b){ b=document.createElement("span"); b.className="badge"; el.appendChild(b); } b.textContent=n>99?"99+":n; } else if(b){ b.remove(); } }
 function updateBadges(){
@@ -658,8 +720,8 @@ function showUndo(msg){ var bar=$("undo-bar"); if(!bar){ bar=document.createElem
 function hideUndo(){ var bar=$("undo-bar"); if(bar) bar.style.display="none"; undoFn=null; if(undoTimer){ clearTimeout(undoTimer); undoTimer=null; } }
 
 /* ============ 版本更新提示 ============ */
-var APP_VERSION="2026.08.26.10";
-var UPDATE_NOTE="新增 8 项功能：打开提醒（逾期待办/临期保质期）、待办筛选+红点、应用锁 PIN、重复待办（每天/每周/每月）、保质期批量粘贴录入、月历联动标记（红点=待办、三角=保质期）、本周小结、信息页密码一键全显。";
+var APP_VERSION="2026.08.27.1";
+var UPDATE_NOTE="新增自动同步：数据管理-云端备份里开启「自动同步」后，手机/电脑的改动几秒后自动合并互通（按时间保留较新一方），无需再手动备份/恢复。";
 function checkUpdate(){ try{ var seen=storeGet("todo.app.seenVer",""); if(seen===APP_VERSION) return; var bar=$("upd-bar"); if(bar){ bar.innerHTML='🎉 已更新到 v'+APP_VERSION+' · '+UPDATE_NOTE+' <button class="upd-close" id="upd-close">知道了</button>'; bar.style.display="flex"; var c=$("upd-close"); if(c) c.onclick=function(){ bar.style.display="none"; }; } storeSet("todo.app.seenVer",APP_VERSION); }catch(e){} }
 function showDigest(){
   try{
@@ -1332,9 +1394,194 @@ async function cloudBackupNow(token,pwd,quiet){ var packed=await cloudEncrypt(pw
 async function cloudRestoreNow(token,pwd){ var url="https://api.github.com/repos/"+CLOUD_REPO+"/contents/"+CLOUD_PATH; var r=await ghApi(url,"GET",token); if(r.status===404){ toast("云端还没有备份"); return; } if(r.status!==200){ toast("获取失败："+cloudErr(r)); return; } var packed=atob(String(r.json.content).replace(/\s+/g,"")); var plain; try{ plain=await cloudDecrypt(pwd,packed); }catch(e){ toast("密码错误或数据损坏"); return; } var obj; try{ obj=JSON.parse(plain); }catch(e){ toast("备份数据格式错误"); return; } confirmDialog("从云端恢复","将用云端备份（"+new Date(obj.ts).toLocaleString()+"，含 "+Object.keys(obj.data||{}).length+" 类数据）覆盖当前全部数据，确定？",function(){ var data=obj.data||{}; for(var k in data){ if(k.indexOf("todo.app")===0&&k!=="todo.app.cloud"&&k!=="todo.app.lastDigest") storeSet(k,data[k]); } toast("已恢复，重新加载"); setTimeout(function(){ location.reload(); },400); }); }
 function cloudRenderStatus(){ var c=cloudCfg(),last=storeGet("todo.app.cloudLast",null),el=$("cloud-status"); if(!el) return; if(c.token){ el.textContent="✓ 已配置（"+c.token.slice(0,8)+"…"+(c.rememberPwd&&c.pwd?"，已记住密码":"，未记住密码")+"）"+(last?" · 上次备份 "+fmtAgo(last.ts):" · 还没备份过")+(c.hint?" · 提示："+c.hint:""); } else { el.textContent="未配置：粘贴令牌并设置密码后即可一键备份/恢复"; } var d=$("cloud-detail"); if(d) d.textContent="令牌仅授权这一个仓库的文件读写；数据用密码加密，密码不对任何人都读不了内容。密码本身无法找回（这是加密的底线），可设密码提示+定期「存本地明文」双保险。"; }
 function fmtAgo(ts){ var s=Math.max(1,Math.round((Date.now()-ts)/60000)); if(s<60) return s+" 分钟前"; var h=Math.round(s/60); if(h<24) return h+" 小时前"; return Math.round(h/24)+" 天前"; }
-function saveCloudForm(){ var c={token:$("cloud-token").value.trim(),pwd:$("cloud-pwd").value,rememberPwd:$("cloud-remember").checked,hint:$("cloud-hint").value.trim()}; if(!c.rememberPwd) c.pwd=""; cloudSaveCfg(c); }
-function loadCloudForm(){ var c=cloudCfg(); $("cloud-token").value=c.token; $("cloud-pwd").value=(c.rememberPwd&&c.pwd)?c.pwd:""; $("cloud-remember").checked=c.rememberPwd!==false; $("cloud-hint").value=c.hint||""; }
-function cloudTryAuto(){ var c=cloudCfg(); if(!c.token||!c.rememberPwd||!c.pwd) return; var last=storeGet("todo.app.cloudLast",null); if(last&&Date.now()-last.ts<24*3600*1000) return; cloudBackupNow(c.token,c.pwd,true).catch(function(){}); }
+function saveCloudForm(){ var c=cloudCfg(); c.token=$("cloud-token").value.trim(); c.pwd=$("cloud-pwd").value; c.rememberPwd=$("cloud-remember").checked; c.hint=$("cloud-hint").value.trim(); if(!c.rememberPwd) c.pwd=""; cloudSaveCfg(c); }
+function loadCloudForm(){ var c=cloudCfg(); $("cloud-token").value=c.token; $("cloud-pwd").value=(c.rememberPwd&&c.pwd)?c.pwd:""; $("cloud-remember").checked=c.rememberPwd!==false; $("cloud-hint").value=c.hint||""; var st=$("sync-toggle"); if(st) st.checked=!!c.autoSync; syncRenderStatus(); }
+function cloudTryAuto(){ var c=cloudCfg(); if(!c.token||!c.rememberPwd||!c.pwd) return; if(c.autoSync) return; var last=storeGet("todo.app.cloudLast",null); if(last&&Date.now()-last.ts<24*3600*1000) return; cloudBackupNow(c.token,c.pwd,true).catch(function(){}); }
+
+/* ============ 自动同步（记录级合并 · 以新胜旧 · 删除墓碑） ============ */
+function mergeMetaMap(a,b){ var o={}; for(var k in a) o[k]=a[k]; for(var k2 in b){ var x=o[k2],y=b[k2]; if(!x||y.t>x.t) o[k2]=y; } return o; }
+function mergeRecList(key, la, ca, tomb){
+  var map={};
+  function consider(r){
+    if(!r||r.id==null) return;
+    var T=tomb[key+":"+r.id]||0, u=r.u||0;
+    if(T && u<T) return;
+    var ex=map[r.id];
+    if(!ex){ map[r.id]=r; return; }
+    if((r.u||0)>=(ex.u||0)) map[r.id]=r;
+  }
+  la.forEach(consider); ca.forEach(consider);
+  return Object.keys(map).map(function(id){ return map[id]; });
+}
+function mergeNameList(key, la, ca, tomb){
+  var map={};
+  function consider(r){
+    if(!r||r.name==null) return;
+    var T=tomb[key+":"+r.name]||0, u=r.u||0;
+    if(T && u<T) return;
+    var ex=map[r.name];
+    if(!ex){ map[r.name]=r; return; }
+    if((r.u||0)>=(ex.u||0)) map[r.name]=r;
+  }
+  la.forEach(consider); ca.forEach(consider);
+  return Object.keys(map).map(function(nm){ return map[nm]; });
+}
+function mergeCal(lo, co, tomb){
+  var out={};
+  for(var d in lo){ if(lo[d]) out[d]=lo[d]; }
+  for(var d2 in co){ if(!co[d2]) continue;
+    var ex=out[d2], T=tomb["todo.app.cal:"+d2]||0;
+    if(!ex){ if(!(T&&(co[d2].u||0)<T)) out[d2]=co[d2]; }
+    else if((co[d2].u||0)>=(ex.u||0)) out[d2]=co[d2]; }
+  return out;
+}
+function mergeRecur(la, ca, tomb){
+  var map={};
+  function consider(r){
+    if(!r) return;
+    var kk=recurKeyOf(r), T=tomb["todo.app.recur:"+kk]||0, u=r.u||0;
+    if(T && u<T) return;
+    var ex=map[kk];
+    if(!ex){ map[kk]=r; return; }
+    if((r.u||0)>=(ex.u||0)) map[kk]=r;
+  }
+  la.forEach(consider); ca.forEach(consider);
+  return Object.keys(map).map(function(k){ return map[k]; });
+}
+function mergeCkr(lo, co, lmeta, cmeta){
+  var out={};
+  function addLeaf(d,h){ if(!out[d]) out[d]={}; out[d][h]=true; }
+  var all={};
+  for(var d in lo){ if(lo[d]) for(var h in lo[d]) all[d+"|"+h]=1; }
+  for(var d2 in co){ if(co[d2]) for(var h2 in co[d2]) all[d2+"|"+h2]=1; }
+  for(var leaf in all){
+    var p=leaf.split("|"), d3=p[0], h3=p.slice(1).join("|");
+    var lp=!!(lo[d3]&&lo[d3][h3]), cp=!!(co[d3]&&co[d3][h3]);
+    if(lp===cp){ if(lp) addLeaf(d3,h3); continue; }
+    var lt=(lmeta[leaf]&&lmeta[leaf].t)||0, ct=(cmeta[leaf]&&cmeta[leaf].t)||0;
+    if(lt>ct){ if(lp) addLeaf(d3,h3); }
+    else { if(cp) addLeaf(d3,h3); }
+  }
+  return out;
+}
+function syncMerge(local, cloud){
+  var ltomb=local["todo.app.tomb"]||{}, ctomb=cloud["todo.app.tomb"]||{};
+  var tomb={};
+  for(var k1 in ltomb) tomb[k1]=ltomb[k1];
+  for(var k2 in ctomb){ if(!tomb[k2]||ctomb[k2]>tomb[k2]) tomb[k2]=ctomb[k2]; }
+  var cut=Date.now()-60*86400000;
+  for(var k3 in tomb){ if(tomb[k3]<cut) delete tomb[k3]; }
+  var lk=local["todo.app.kmeta"]||{}, ck=cloud["todo.app.kmeta"]||{};
+  var lmeta=local["todo.app.ck.meta"]||{}, cmeta=cloud["todo.app.ck.meta"]||{};
+  var out={};
+  var allKeys={};
+  for(var a in local) allKeys[a]=1;
+  for(var b in cloud) allKeys[b]=1;
+  for(var key in allKeys){
+    if(key==="todo.app.cloud"||key==="todo.app.lastDigest"||key==="todo.app.cloudLast"||key==="todo.app.syncLast") continue;
+    if(key==="todo.app.tomb"){ out[key]=tomb; continue; }
+    if(key==="todo.app.kmeta"||key==="todo.app.ck.meta"){ out[key]=mergeMetaMap(local[key]||{},cloud[key]||{}); continue; }
+    var lv=local[key], cv=cloud[key];
+    if(SYNC_ID_KEYS.indexOf(key)>-1) out[key]=mergeRecList(key, lv||[], cv||[], tomb);
+    else if(SYNC_NAME_KEYS.indexOf(key)>-1) out[key]=mergeNameList(key, lv||[], cv||[], tomb);
+    else if(key==="todo.app.cal") out[key]=mergeCal(lv||{}, cv||{}, tomb);
+    else if(key==="todo.app.ck.records") out[key]=mergeCkr(lv||{}, cv||{}, lmeta, cmeta);
+    else if(key==="todo.app.recur") out[key]=mergeRecur(lv||[], cv||[], tomb);
+    else {
+      var lt=lk[key]||0, ct=ck[key]||0;
+      out[key]= lt>ct ? lv : (ct>lt ? cv : (cv!==undefined ? cv : lv));
+    }
+  }
+  return out;
+}
+function syncDataKeys(){ var ks=[]; for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k&&k.indexOf("todo.app")===0&&SYNC_SELF_KEYS.indexOf(k)===-1) ks.push(k); } return ks; }
+function resetBaseline(){ syncBase={}; syncDataKeys().forEach(function(k){ syncBase[k]=JSON.parse(JSON.stringify(storeGet(k,null))); }); }
+function reloadState(){
+  todos=storeGet(K_TODO,[]); todoCats=storeGet(K_TODOCAT,[]);
+  calData=storeGet(K_CAL,{}); recur=storeGet(K_RECUR,[]);
+  products=storeGet(K_PROD,[]); prodCats=storeGet(K_PRODCAT,[]);
+  habits=storeGet(K_CKH,[]); records=storeGet(K_CKR,{}); ckCats=storeGet(K_CKCAT,[]);
+  infos=storeGet(K_INFO,[]); infoCats=storeGet(K_INFOCAT,[]);
+  try{ renderTodoCats(); renderTodos(); renderCalendar(); renderCheckin(); renderProducts(); renderInfos(); renderSummary(); updateBadges(); }catch(e){}
+}
+function syncRenderStatus(){
+  var el=$("sync-status"); if(!el) return;
+  var c=cloudCfg(), last=storeGet("todo.app.syncLast",null);
+  if(!c.token){ el.textContent="⇅ 自动同步：未配置（先配置上面的云端备份）"; return; }
+  if(!c.rememberPwd||!c.pwd){ el.textContent="⇅ 自动同步：需勾选「记住密码」才能自动解密"; return; }
+  el.textContent=(c.autoSync?"⇅ 自动同步已开启":"⇅ 自动同步未开启")+(last?" · 上次同步 "+fmtAgo(last.ts):" · 还没同步过");
+}
+function scheduleSync(){
+  if(!SYNC_ON) return;
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(function(){ syncNow(); },5000);
+}
+async function syncNow(manual){
+  var c=cloudCfg();
+  if(!c.token||!c.pwd){ if(manual) toast("请先在上方配置云端备份"); return; }
+  if(!c.autoSync){ if(manual) toast("请先开启自动同步"); return; }
+  if(syncBusy){ if(manual) toast("正在同步…"); return; }
+  if(syncFormOpen>0){ if(manual) toast("先关闭编辑窗口再同步"); scheduleSync(); return; }
+  syncBusy=true;
+  try{
+    var url="https://api.github.com/repos/"+CLOUD_REPO+"/contents/"+CLOUD_PATH;
+    var r=await ghApi(url,"GET",c.token);
+    var cloudData=null, sha=null;
+    if(r.status===200){ sha=r.json.sha;
+      var packed=atob(String(r.json.content).replace(/\s+/g,""));
+      var plain=null;
+      try{ plain=await cloudDecrypt(c.pwd,packed); }catch(e){ if(manual) toast("密码错误或云端数据损坏"); syncBusy=false; return; }
+      try{ cloudData=(JSON.parse(plain)).data||{}; }catch(e){ if(manual) toast("云端数据格式错误"); syncBusy=false; return; }
+    } else if(r.status!==404){ if(manual) toast("连接云端失败："+cloudErr(r)); syncBusy=false; return; }
+    var local=cloudCollect();
+    var merged=cloudData? syncMerge(local,cloudData) : local;
+    var localChanged=false;
+    for(var k in merged){
+      if(k.indexOf("todo.app")!==0) continue;
+      if(JSON.stringify(merged[k])!==JSON.stringify(local[k]===undefined?null:local[k])) localChanged=true;
+    }
+    if(cloudData && JSON.stringify(merged)===JSON.stringify(cloudData) && !localChanged){
+      rawSet("todo.app.syncLast",{ts:Date.now()}); resetBaseline(); syncRenderStatus(); syncBusy=false; if(manual) toast("✅ 已是最新"); return;
+    }
+    for(var k2 in merged){ if(k2.indexOf("todo.app")===0&&SYNC_SELF_KEYS.indexOf(k2)===-1&&k2!=="todo.app.cloud"&&k2!=="todo.app.lastDigest") rawSet(k2,merged[k2]); }
+    var packed2=await cloudEncrypt(c.pwd,JSON.stringify({ts:Date.now(),data:merged}));
+    var body={message:"同步 "+new Date().toISOString().slice(0,10),content:btoa(packed2),branch:"main"};
+    if(sha) body.sha=sha;
+    var pr=await ghApi(url,"PUT",c.token,body);
+    if(pr.status===409){
+      var r2=await ghApi(url,"GET",c.token);
+      if(r2.status===200){ body.sha=r2.json.sha;
+        var packed3=atob(String(r2.json.content).replace(/\s+/g,""));
+        try{ var pl2=await cloudDecrypt(c.pwd,packed3); var cd2=(JSON.parse(pl2)).data||{};
+          var merged2=syncMerge(cloudCollect(),cd2);
+          body.content=btoa(await cloudEncrypt(c.pwd,JSON.stringify({ts:Date.now(),data:merged2})));
+          for(var k3 in merged2){ if(k3.indexOf("todo.app")===0&&SYNC_SELF_KEYS.indexOf(k3)===-1&&k3!=="todo.app.cloud"&&k3!=="todo.app.lastDigest") rawSet(k3,merged2[k3]); }
+          var pr2=await ghApi(url,"PUT",c.token,body);
+          if(pr2.status!==200&&pr2.status!==201&&manual){ toast("推送失败："+cloudErr(pr2)); }
+        }catch(e){ if(manual) toast("重试失败："+e.message); }
+      }
+    } else if(pr.status!==200&&pr.status!==201){ if(manual) toast("推送失败："+cloudErr(pr)); }
+    rawSet("todo.app.syncLast",{ts:Date.now()});
+    if(localChanged){ resetBaseline(); reloadState(); } else { resetBaseline(); }
+    syncRenderStatus();
+    if(manual) toast("✅ 同步完成 · "+pad(new Date().getHours())+":"+pad(new Date().getMinutes()));
+  }catch(e){ if(manual) toast("同步失败："+e.message); }
+  syncBusy=false;
+}
+function syncInit(){
+  try{
+    var c=cloudCfg();
+    if(c.token&&c.autoSync&&c.rememberPwd&&c.pwd){
+      SYNC_ON=true;
+      resetBaseline();
+      setTimeout(function(){ syncNow(); },1500);
+    }
+    syncRenderStatus();
+    document.addEventListener("visibilitychange",function(){
+      if(document.visibilityState==="visible"&&SYNC_ON&&Date.now()-syncLastAt>60000) syncNow();
+    });
+  }catch(e){}
+}
 
 /* ============ 移动端触摸拖拽 ============ */
 var touchDrag=null;
@@ -1483,6 +1730,17 @@ function bind(){
   $("cloud-backup-btn").onclick=function(){ var t=$("cloud-token").value.trim(),p=$("cloud-pwd").value; if(!t){ toast("请先粘贴 GitHub 令牌"); return; } if(!p){ toast("请设置备份密码"); return; } saveCloudForm(); var btn=$("cloud-backup-btn"), bhtml='<span class="ic" data-i="upload"></span> 备份到云端'; btn.disabled=true; btn.innerHTML='<span class="ic" data-i="upload"></span> 备份中…'; cloudBackupNow(t,p,false).then(function(r){ btn.disabled=false; btn.innerHTML=bhtml; if(!r.ok) toast("❌ 备份失败："+r.err); }).catch(function(){ btn.disabled=false; btn.innerHTML=bhtml; toast("❌ 备份失败，请检查网络"); }); };
   $("cloud-restore-btn").onclick=function(){ var t=$("cloud-token").value.trim(),p=$("cloud-pwd").value; if(!t){ toast("请先粘贴 GitHub 令牌"); return; } if(!p){ toast("请输入备份密码"); return; } saveCloudForm(); var btn=$("cloud-restore-btn"); btn.disabled=true; btn.textContent="恢复中…"; cloudRestoreNow(t,p).then(function(){ btn.disabled=false; btn.textContent="从云端恢复"; }).catch(function(){ btn.disabled=false; btn.textContent="从云端恢复"; toast("恢复失败，请检查网络"); }); };
   $("cloud-plain-btn").onclick=function(){ saveCloudForm(); exportPlainBackup(); };
+  // 自动同步
+  $("sync-toggle").checked=!!cloudCfg().autoSync;
+  $("sync-toggle").onchange=function(){
+    var c=cloudCfg(); c.autoSync=$("sync-toggle").checked;
+    if(c.autoSync&&(!c.token||!c.pwd||!c.rememberPwd)){ c.autoSync=false; $("sync-toggle").checked=false; toast("请先配置令牌、密码，并勾选「记住密码」"); syncRenderStatus(); return; }
+    cloudSaveCfg(c);
+    if(c.autoSync){ SYNC_ON=true; resetBaseline(); toast("自动同步已开启"); syncNow(); }
+    else { SYNC_ON=false; toast("自动同步已关闭"); }
+    syncRenderStatus();
+  };
+  $("sync-now-btn").onclick=function(){ var c=cloudCfg(); if(!c.autoSync){ toast("请先开启自动同步"); return; } syncNow(true); };
 
   // 本周小结
   $("week-btn").onclick=showWeekReport;
@@ -1499,7 +1757,7 @@ function bind(){
 }
 
 /* ============ 启动 ============ */
-try{ bind(); fillIcons(document); ensureHabitColors(); renderTodoCats(); renderTodos(); checkUpdate(); cloudRenderStatus(); cloudTryAuto(); if(storeGet("todo.app.lastDigest","")!==todayKey()){ storeSet("todo.app.lastDigest",todayKey()); showDigest(); } if(pinStore) $("pin-mask").classList.add("show"); checkReminders(); if($("app-ver")) $("app-ver").textContent="v"+APP_VERSION+" · 数据存于本机，清理浏览器会丢失，建议常备份"; }catch(e){ showErr("初始化失败："+e.message); }
+try{ bind(); fillIcons(document); ensureHabitColors(); renderTodoCats(); renderTodos(); checkUpdate(); cloudRenderStatus(); cloudTryAuto(); syncInit(); if(storeGet("todo.app.lastDigest","")!==todayKey()){ storeSet("todo.app.lastDigest",todayKey()); showDigest(); } if(pinStore) $("pin-mask").classList.add("show"); checkReminders(); if($("app-ver")) $("app-ver").textContent="v"+APP_VERSION+" · 数据存于本机，清理浏览器会丢失，建议常备份"; }catch(e){ showErr("初始化失败："+e.message); }
 </script>
 </body>
 </html>
